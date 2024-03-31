@@ -34,3 +34,8 @@ cargo build --release
 __Warning: By default release builds are build for x86_64_v3 (avx,avx2) with lto__
 
 
+##
+`
+Copyright 2024 Stavros Avramidis
+`
+
