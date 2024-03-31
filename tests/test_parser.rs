@@ -31,13 +31,13 @@ mod parser_tests {
         assert_eq!(
             res,
             ExprAST::InfixOp {
-                lhs: Box::new(ExprAST::Literal(Literal::Int(42))),
-                op: InfixOperator::Add,
-                rhs: Box::new(ExprAST::InfixOp {
-                    lhs: Box::new(ExprAST::Literal(Literal::Int(17))),
+                lhs: Box::new(ExprAST::InfixOp {
+                    lhs: Box::new(ExprAST::Literal(Literal::Int(42))),
                     op: InfixOperator::Add,
-                    rhs: Box::new(ExprAST::Literal(Literal::Int(42))),
+                    rhs: Box::new(ExprAST::Literal(Literal::Int(17))),
                 }),
+                op: InfixOperator::Add,
+                rhs: Box::new(ExprAST::Literal(Literal::Int(42))),
             },
             "{:#?}",
             res
@@ -48,24 +48,24 @@ mod parser_tests {
         assert_eq!(
             res,
             ExprAST::InfixOp {
-                lhs: Box::new(ExprAST::InfixOp {
-                    lhs: Box::new(ExprAST::Literal(Literal::Int(16),)),
+                rhs: Box::new(ExprAST::InfixOp {
+                    rhs: Box::new(ExprAST::Literal(Literal::Int(16),)),
                     op: InfixOperator::Mod,
-                    rhs: Box::new(ExprAST::InfixOp {
-                        lhs: Box::new(ExprAST::Literal(Literal::Int(15))),
+                    lhs: Box::new(ExprAST::InfixOp {
+                        rhs: Box::new(ExprAST::Literal(Literal::Int(15))),
                         op: InfixOperator::Sub,
-                        rhs: Box::new(ExprAST::Literal(Literal::Int(14))),
+                        lhs: Box::new(ExprAST::Literal(Literal::Int(14))),
                     }),
                 }),
                 op: InfixOperator::Add,
-                rhs: Box::new(ExprAST::InfixOp {
-                    lhs: Box::new(ExprAST::InfixOp {
-                        lhs: Box::new(ExprAST::Literal(Literal::Int(13))),
+                lhs: Box::new(ExprAST::InfixOp {
+                    rhs: Box::new(ExprAST::InfixOp {
+                        rhs: Box::new(ExprAST::Literal(Literal::Int(13))),
                         op: InfixOperator::Mul,
-                        rhs: Box::new(ExprAST::Literal(Literal::Int(12))),
+                        lhs: Box::new(ExprAST::Literal(Literal::Int(12))),
                     }),
                     op: InfixOperator::Add,
-                    rhs: Box::new(ExprAST::Literal(Literal::Int(11))),
+                    lhs: Box::new(ExprAST::Literal(Literal::Int(11))),
                 }),
             },
             "{:#?}",
@@ -77,20 +77,20 @@ mod parser_tests {
         assert_eq!(
             res,
             ExprAST::InfixOp {
-                lhs: Box::new(ExprAST::LValue(LValueAST::ArraySubscript {
+                rhs: Box::new(ExprAST::LValue(LValueAST::ArraySubscript {
                     id: "a",
                     expr: Box::new(ExprAST::Literal(Literal::Int(42))),
                 },)),
                 op: InfixOperator::Add,
-                rhs: Box::new(ExprAST::InfixOp {
-                    lhs: Box::new(ExprAST::Call {
+                lhs: Box::new(ExprAST::InfixOp {
+                    rhs: Box::new(ExprAST::Call {
                         function: "c",
                         args: vec![
                             ExprAST::Literal(Literal::Int(42)),
                             ExprAST::InfixOp {
-                                lhs: Box::new(ExprAST::Literal(Literal::Int(7))),
+                                rhs: Box::new(ExprAST::Literal(Literal::Int(7))),
                                 op: InfixOperator::Add,
-                                rhs: Box::new(ExprAST::Literal(Literal::Int(1))),
+                                lhs: Box::new(ExprAST::Literal(Literal::Int(1))),
                             },
                             ExprAST::LValue(LValueAST::ArraySubscript {
                                 id: "a",
@@ -99,13 +99,13 @@ mod parser_tests {
                         ],
                     }),
                     op: InfixOperator::Add,
-                    rhs: Box::new(ExprAST::InfixOp {
-                        lhs: Box::new(ExprAST::Call {
+                    lhs: Box::new(ExprAST::InfixOp {
+                        rhs: Box::new(ExprAST::Call {
                             function: "b",
                             args: vec![],
                         }),
                         op: InfixOperator::Add,
-                        rhs: Box::new(ExprAST::LValue(LValueAST::Identifier("a"))),
+                        lhs: Box::new(ExprAST::LValue(LValueAST::Identifier("a"))),
                     }),
                 }),
             },
@@ -114,4 +114,3 @@ mod parser_tests {
         );
     }
 }
-
