@@ -1,4 +1,5 @@
-mod parser_tests {
+mod parser_tests
+{
     use alan::ast::*;
     use alan::lexer::*;
     use alan::parser::*;
@@ -11,7 +12,8 @@ mod parser_tests {
         prelude::*,
     };
 
-    fn parse_expr_test(input: &str) -> ExprAST {
+    fn parse_expr_test(input: &str) -> ExprAST
+    {
         let lex = Token::lexer(input);
 
         let token_iter = lex.spanned().map(|(tok, span)| match tok {
@@ -25,7 +27,8 @@ mod parser_tests {
     }
 
     #[test]
-    fn test_expr() {
+    fn test_expr()
+    {
         let input = "(((((((((((((((((((((((( 42 + 17) + 42)))))))))))))))))))))))";
         let res = parse_expr_test(input);
         assert_eq!(

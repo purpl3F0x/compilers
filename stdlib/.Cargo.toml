@@ -1,0 +1,13 @@
+[package]
+name = "stdlib"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+alan = { path = "../alan" }
+chumsky = { version = "1.0.0-alpha.6", features = [
+    "label",
+    "extension",
+    "nightly",
+] }
+logos = "0.14.0"

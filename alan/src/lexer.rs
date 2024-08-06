@@ -10,7 +10,8 @@ use std::num::ParseIntError;
 use likely_stable::{likely, unlikely};
 
 #[derive(Default, Debug, Clone, PartialEq)]
-pub enum LexingError {
+pub enum LexingError
+{
     InvalidInteger,
     IntergerOverflow,
 
@@ -29,7 +30,8 @@ pub enum LexingError {
 #[logos(skip r"[ \t\r\n\f]+")]
 #[logos(skip r"--[^\n]*" )] // Signle line comments
 #[logos(skip r"\(\*(?:[^*]|\*[^\)])*\*\)")]
-pub enum Token<'input> {
+pub enum Token<'input>
+{
     // Seperators
     #[token("(")]
     ParentheseisOpen,
@@ -170,7 +172,8 @@ pub enum Token<'input> {
     Error(LexingError),
 }
 
-fn char_escape_code<'input>(lex: &mut Lexer<'input, Token<'input>>) -> Result<char, LexingError> {
+fn char_escape_code<'input>(lex: &mut Lexer<'input, Token<'input>>) -> Result<char, LexingError>
+{
     let mut chars = lex.slice().chars();
 
     match chars.nth(2) {
@@ -187,7 +190,8 @@ fn char_escape_code<'input>(lex: &mut Lexer<'input, Token<'input>>) -> Result<ch
 
 fn string_literal<'input>(
     lex: &mut Lexer<'input, Token<'input>>,
-) -> Result<internment::Intern<String>, LexingError> {
+) -> Result<internment::Intern<String>, LexingError>
+{
     let mut chars = lex.slice().chars();
 
     let mut s = String::new();
@@ -239,8 +243,10 @@ fn string_literal<'input>(
     Ok(internment::Intern::new(s))
 }
 
-impl From<ParseIntError> for LexingError {
-    fn from(err: ParseIntError) -> Self {
+impl From<ParseIntError> for LexingError
+{
+    fn from(err: ParseIntError) -> Self
+    {
         use std::num::IntErrorKind::*;
         match err.kind() {
             PosOverflow | NegOverflow => LexingError::IntergerOverflow,
@@ -249,8 +255,10 @@ impl From<ParseIntError> for LexingError {
     }
 }
 
-impl LexingError {
-    pub fn get_message(&self) -> String {
+impl LexingError
+{
+    pub fn get_message(&self) -> String
+    {
         use core::mem::size_of;
         match self {
             Self::IntergerOverflow => {
@@ -266,8 +274,10 @@ impl LexingError {
     }
 }
 
-impl<'input> fmt::Display for Token<'input> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'input> fmt::Display for Token<'input>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
         match self {
             Self::ParentheseisOpen => write!(f, "("),
             Self::ParentheseisClose => write!(f, ")"),
@@ -312,8 +322,10 @@ impl<'input> fmt::Display for Token<'input> {
     }
 }
 
-impl fmt::Display for LexingError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl fmt::Display for LexingError
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
         match self {
             LexingError::InvalidInteger => write!(f, "Invalid Integer"),
 

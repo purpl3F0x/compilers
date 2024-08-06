@@ -1,41 +1,10 @@
-[package]
-name = "compilers_project"
-version = "0.1.0"
-edition = "2021"
-authors = ["Stavros Avramidis <stavros9899@gmail.com>"]
-
-
-[lib]
-name = "alan"
-test = true
-
-
-[[bin]]
-name = "alanc"
-test = true
-
-# [[bin]]
-# name = "alanc"
-# test = true
-
-[dependencies]
-ariadne = { version = "0.4.0", features = ["auto-color"] }
-chumsky = { version = "1.0.0-alpha.6", features = [
-    "label",
-    "extension",
-    "nightly",
-] }
-internment = "0.7.4"
-libc = "0.2.153"
-likely_stable = "0.1.2"
-logos = "0.14.0"
-
-
-[profile.dev]
-opt-level = 2
+[workspace]
+resolver = "2"
+default-members = ["alanc"]  # Hint default binary target
+members = [ "alanc", "alan"]
 
 [profile.release]
 opt-level = 3
-lto = true
+lto = "fat"
 strip = true
 panic = "abort"

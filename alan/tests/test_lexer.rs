@@ -1,11 +1,13 @@
 #[cfg(test)]
-mod lexer_tests {
+mod lexer_tests
+{
     use alan::lexer::{LexingError, Token};
     use logos::Logos;
     use logos::Span;
 
     #[test]
-    fn test_identidiers() {
+    fn test_identidiers()
+    {
         let tokens: Vec<_> = Token::lexer("foo foo42 foo_42 _foo_42_ foo42 42foo")
             .spanned()
             .collect();
@@ -23,7 +25,8 @@ mod lexer_tests {
     }
 
     #[test]
-    fn test_numbers() {
+    fn test_numbers()
+    {
         let tokens: Vec<_> = Token::lexer("42 17 170000000000000000000000000000000000000")
             .spanned()
             .collect();
@@ -38,7 +41,8 @@ mod lexer_tests {
     }
 
     #[test]
-    fn test_chars() {
+    fn test_chars()
+    {
         let tokens: Vec<_> = Token::lexer(r#"'a' '"' '\0' '\\' '\x77' '\xFF' '\g' '\'' '\"'"#)
             .spanned()
             .collect();
@@ -62,7 +66,8 @@ mod lexer_tests {
     }
 
     #[test]
-    fn test_strings() {
+    fn test_strings()
+    {
         use internment::Intern;
         let tokens: Vec<_> =
             Token::lexer(r#" "Hello World! 42\x77\0\n\"" "this is an invalid ascii char \xFE" "#)
@@ -86,7 +91,8 @@ mod lexer_tests {
     }
 
     #[test]
-    fn test_comments() {
+    fn test_comments()
+    {
         let tokens: Vec<_> = Token::lexer(" 42 (*....\n ***\n iuigu 76..*) 17 -- single \n 42")
             .spanned()
             .collect();
@@ -102,7 +108,8 @@ mod lexer_tests {
     }
 
     #[test]
-    fn test_operators() {
+    fn test_operators()
+    {
         let tokens: Vec<_> = Token::lexer(" + - * / % [] () {} == != > <= & | = , ; :")
             .spanned()
             .collect();
@@ -136,7 +143,8 @@ mod lexer_tests {
     }
 
     #[test]
-    fn test_keywords() {
+    fn test_keywords()
+    {
         let tokens: Vec<_> =
             Token::lexer("byte else false if int proc reference return while true")
                 .spanned()

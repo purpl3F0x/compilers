@@ -1,8 +1,8 @@
 use super::*;
 
 use ast::*;
+use chumsky::combinator::To;
 use lexer::*;
-
 
 // TODO: lhs rhs bug on operations !!
 
@@ -36,7 +36,7 @@ where
 }
 
 pub fn parse_fncall<'src, I>(
-) -> impl Parser<'src, I, ExprAST<'src>, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+) -> impl Parser<'src, I, FnCallAST<'src>, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = SimpleSpan>,
 {
@@ -55,7 +55,7 @@ where
             just(Token::ParentheseisOpen),
             just(Token::ParentheseisClose),
         ))
-        .map(|(function, args)| ExprAST::Call { function, args })
+        .map(|(name, args)| FnCallAST { name, args })
         .labelled("function call");
     call
 }
@@ -89,7 +89,7 @@ where
                 just(Token::ParentheseisOpen),
                 just(Token::ParentheseisClose),
             ))
-            .map(|(function, args)| ExprAST::Call { function, args })
+            .map(|(name, args)| FnCallAST { name, args })
             .labelled("function call");
 
         let subscript = ident
@@ -112,6 +112,8 @@ where
             .map(ExprAST::LValue)
             .labelled("l-value");
 
+        let fn_call_into_expr = call.map(ExprAST::FunctionCall);
+
         let atom = literal
             // Atoms can also just be normal expressions, but surrounded with parentheses
             .or(expr.clone().delimited_by(
@@ -128,7 +130,7 @@ where
                 ],
                 |_| (ExprAST::Error),
             )))
-            .or(call)
+            .or(fn_call_into_expr)
             .or(lvalue)
             .boxed();
 
@@ -300,7 +302,7 @@ where
 
         let call = parse_fncall()
             .then_ignore(stmt_end.clone())
-            .map(StatementAST::Expr);
+            .map(|call| StatementAST::FunctionCall(call));
 
         let if_else = recursive(|if_| {
             just(Token::If)
@@ -371,12 +373,7 @@ where
 }
 
 pub fn parse_function<'src, I>(
-) -> impl Parser<
-    'src, 
-    I, 
-    FnAST<'src>, 
-    extra::Err<Rich<'src, Token<'src>, Span>>
-> + Clone
+) -> impl Parser<'src, I, FunctionAST<'src>, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = SimpleSpan>,
 {
@@ -457,7 +454,7 @@ where
             .then(r_type)
             .then(locals)
             .then(parse_compont_stmt())
-            .map(|((((name, params), r_type), locals), body)| FnAST {
+            .map(|((((name, params), r_type), locals), body)| FunctionAST {
                 name,
                 r_type,
                 params,
@@ -468,3 +465,78 @@ where
         func_def.labelled("function definition").as_context()
     })
 }
+
+// This parser will be used to parse the stdlib functions, and generate extern llvm binindings
+// pub fn extern_func_parser<'src, I>(
+// ) -> impl Parser<'src, I, Vec<FunctionAST<'src>>, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+// where
+//     I: ValueInput<'src, Token = Token<'src>, Span = SimpleSpan>,
+// {
+//     // Most of the code is copy paste from parse_function
+//     // but it's easier to have a separate function for the extern functions
+
+//     recursive(|func| {
+//         let ident = select! {
+//            Token::Identifier(id) => id,
+//         }
+//         .labelled("identifier");
+
+//         let data_type = select! {
+//             Token::Int => Type::Int,
+//             Token::Byte => Type::Byte,
+//         }
+//         .labelled("data-type");
+
+//         let ftype = data_type
+//             .then_ignore(just(Token::BracketOpen).then(just(Token::BracketClose)))
+//             .map(|t| Type::Array(Box::new(t)))
+//             .or(data_type);
+
+//         let parameters_type = just(Token::Ref)
+//             .or_not()
+//             .then(ftype)
+//             .clone()
+//             .map(|(r, type_)| match r {
+//                 Some(_) => Type::Ref(Box::new(type_)),
+//                 None => type_,
+//             })
+//             .labelled("parameter type");
+
+//         let fparam = ident
+//             .clone()
+//             .then_ignore(just(Token::Colon))
+//             .then(parameters_type)
+//             .map(|(name, type_)| VarDefAST { name, type_ })
+//             .labelled("function parameter");
+
+//         let fparams = fparam
+//             .separated_by(just(Token::Comma))
+//             .collect::<Vec<_>>()
+//             .delimited_by(
+//                 just(Token::ParentheseisOpen),
+//                 just(Token::ParentheseisClose),
+//             )
+//             .labelled("function parameters");
+
+//         let r_type = data_type
+//             .or(select! {
+//                     Token::Proc => Type::Void,
+//             })
+//             .labelled("return type");
+
+//         let func_def = ident
+//             .then(fparams)
+//             .then_ignore(just(Token::Colon))
+//             .then(r_type)
+//             .then_ignore(just(Token::SemiColon))
+//             .map(|((name, params), r_type)| FunctionAST {
+//                 name,
+//                 r_type,
+//                 params,
+//                 locals: vec![],
+//                 body: vec![],
+//             });
+
+//         func_def.repeated().collect::<Vec<_>>()
+//     })
+// }
