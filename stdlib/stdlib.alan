@@ -1,0 +1,28 @@
+-- This file contains the standard library functions of the Alan programming language.
+-- Stavros Avramidis
+
+
+-- stdout
+writeInteger(n: int)              : proc;
+writeByte(b: byte)                : proc;
+writeChar(b: byte)                : proc;
+writeString(s: reference byte []) : proc;
+
+-- stdin
+readByte()                               : byte;
+readInteger()                            : int;
+readChar()                               : byte;
+readString(n: int, s: reference byte []) : proc;
+
+-- type convertions
+extend(b: byte) : int;
+shrink(i: int)  : byte;
+
+-- String 
+strlen(s: reference byte [])                           : int;
+strcmp(s1: reference byte [], s2: reference byte [])   : int;
+strcpy(trg: reference byte [], src: reference byte []) : proc;
+strcat(trg: reference byte [], src: reference byte []) : proc;
+
+
+

@@ -1,0 +1,21 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 150
+AlignConsecutiveDeclarations: true
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: false 
+AllowShortBlocksOnASingleLine: false
+AlignTrailingComments:
+    Kind: Always
+    OverEmptyLines: 2
+AlignAfterOpenBracket: AlwaysBreak
+BinPackArguments: false
+AlignConsecutiveMacros: true
+PenaltyBreakComment: 200
+PenaltyBreakAssignment: 6
+PenaltyBreakOpenParenthesis: 300
+BreakBeforeBraces: Mozilla
+BinPackParameters: false
+AlignOperands: Align
+IndentPPDirectives: BeforeHash
+
