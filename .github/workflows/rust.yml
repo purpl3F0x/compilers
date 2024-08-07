@@ -1,23 +1,57 @@
-on: [push]
+on: [push, pull_request]
 
 name: build
 
 jobs:
   check:
-    name: Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+
+      - name: Set LLVM_SYS_180_PREFIX
+        run: echo "LLVM_SYS_180_PREFIX=${GITHUB_WORKSPACE}/llvm" >> $GITHUB_ENV
+
       - name: Install latest nightly
         uses: actions-rs/toolchain@v1
         with:
             toolchain: nightly
             override: true
-            components: rustfmt, clippy
+
+      - name: Cache LLVM and Clang
+        id: cache-llvm
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:/Program Files/LLVM
+            ./llvm
+          key: llvm-18
+      
+      - name: Cache Cargo registry
+        id: cache-cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install LLVM and Clang
+        uses: purpl3F0x/install-llvm-action@18
+        with:
+          version: "18"
+          # cached: ${{ steps.cache-llvm.outputs.cache-hit }}
+      - name: Install libncurses5
+        if: runner.os == 'Linux'
+        run: sudo apt update && sudo apt install -y libncurses5
+      - name: llvm-config
+        run: llvm-config --version --bindir --libdir
+
 
       # `cargo check` command here will use installed `nightly`
       # as it is set as an "override" for current directory
-
       - name: Run cargo check
         uses: actions-rs/cargo@v1
         with:
@@ -27,6 +61,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
+          args: -all
       
       - name: Build
         uses: actions-rs/cargo@v1
