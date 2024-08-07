@@ -61,10 +61,19 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -all
+          args: --all
       
       - name: Build
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release --all-features
+      
+      - name: Archive binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: alanc-dist
+          merge-multiple: true
+          path: |
+            target/release/alanc
+            target/release/libalan.a
