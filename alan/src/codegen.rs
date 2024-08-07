@@ -1,5 +1,5 @@
-use core::{error, fmt};
-use std::{borrow::Borrow, fmt::Error};
+use core::fmt;
+use std::borrow::Borrow;
 
 use super::ast::*;
 use super::IntType as AlanIntType;
@@ -18,7 +18,7 @@ use inkwell::{
     context::{self},
     module::Module,
     passes::PassBuilderOptions,
-    passes::{PassManager, PassManagerBuilder},
+    passes::PassManager,
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine},
     types::{BasicType, BasicTypeEnum, IntType, PointerType, VoidType},
     values::{AsValueRef, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue},
@@ -125,10 +125,6 @@ impl<'ctx> Compiler<'ctx>
 
         Target::initialize_all(&config);
 
-        // Create a pass manager
-        // let pass_manager_builder = PassManagerBuilder::create();
-        // let pass_manager: PassManager<Module> = PassManager::create(());
-
         let target_triple = TargetMachine::get_default_triple();
         let target = Target::from_triple(&target_triple).unwrap();
 
@@ -143,13 +139,25 @@ impl<'ctx> Compiler<'ctx>
             )
             .unwrap();
 
-        const PASSES: &str = "instcombine,reassociate,gvn,simplifycfg,\
-                            loop-simplify,loop-rotate,loop-unroll,loop-unroll-and-jam,loop-deletion,loop-reduce,simple-loop-unswitch,loop-vectorize,\
-                            mem2reg,dce,licm,adce,memcpyopt,gvn";
+        let pass_options = PassBuilderOptions::create();
+        pass_options.set_verify_each(true);
+        pass_options.set_debug_logging(false);
+        pass_options.set_loop_interleaving(true);
+        pass_options.set_loop_vectorization(true);
+        pass_options.set_loop_slp_vectorization(true);
+        pass_options.set_loop_unrolling(true);
+        pass_options.set_forget_all_scev_in_loop_unroll(true);
+        pass_options.set_licm_mssa_opt_cap(1);
+        pass_options.set_licm_mssa_no_acc_for_promotion_cap(10);
+        pass_options.set_call_graph_profile(true);
+        pass_options.set_merge_functions(true);
 
+        const PASSES: &str = "default<O3>";
+
+        println!("Optimizing...");
         self.module
-            .run_passes(PASSES, &target_machine, PassBuilderOptions::create())
-            .unwrap();
+            .run_passes(PASSES, &target_machine, pass_options)
+            .unwrap()
     }
 
     pub fn compile(&mut self, program: &'ctx FunctionAST) -> IRResult<()>
@@ -214,6 +222,7 @@ impl<'ctx> Compiler<'ctx>
 
     fn append_std_functions(&self)
     {
+        // todo: add the stdlib functions
         let write_interger_t = self.proc_type.fn_type(&[self.int_type.into()], false);
         self.module
             .add_function("writeInteger", write_interger_t, None);
@@ -358,7 +367,6 @@ impl<'ctx> Compiler<'ctx>
 
     fn cgen_statement(&mut self, stmt: &'ctx StatementAST) -> IRResult<()>
     {
-        println!("Statement: {:?}", stmt);
         match stmt {
             StatementAST::Expr(e) => {
                 self.cgen_expresion(e)?;

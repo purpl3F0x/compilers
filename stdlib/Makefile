@@ -1,5 +1,5 @@
 CC ?= gcc
-CFLAGS += -Wall -Werror -O3 --fast-math -std=gnu17 -march=x86-64-v2 -mtune=haswell -I.
+CFLAGS += -Wall -Werror -O3 -ffast-math -std=gnu17 -march=x86-64-v2 -mtune=haswell -I.
 LIB_NAME = libalan.a
 
 OUT_DIR ?= .

@@ -9,7 +9,6 @@ pub enum Type
     Int,
     Byte,
     Void,
-
     // Array Types
     Array(Box<Type>),
     // Reference Types
@@ -90,12 +89,6 @@ pub enum ExprAST<'a>
     },
 
     FunctionCall(FnCallAST<'a>),
-
-    // Call
-    // {
-    //     function: &'a str,
-    //     args: Vec<ExprAST<'a>>,
-    // },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -161,7 +154,6 @@ pub enum StatementAST<'a>
 }
 
 #[derive(Clone, Debug, PartialEq)]
-
 pub struct VarDefAST<'a>
 {
     pub name: &'a str,

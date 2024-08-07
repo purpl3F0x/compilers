@@ -102,13 +102,6 @@ fn main()
         unreachable!();
     }
 
-    println!(
-        "Optimizations: {}",
-        if args.optimize { "enabled" } else { "disabled" }
-    );
-
-    println!("Source code: {}", src_buffer);
-
     // if let Some(mut imm) = imm_stream {
     //     write!(&mut imm, "42",).unwrap_or_else(|err| {
     //         eprint!("Could not write to {}", imm_file_name);
@@ -122,19 +115,26 @@ fn main()
     //     });
     // }
 
-
     let top: FunctionAST = {
         FunctionAST {
             name: "my_main",
             r_type: ast::Type::Void,
             params: vec![],
             locals: vec![],
-            body: vec![ast::StatementAST::FunctionCall(ast::FnCallAST {
-                name: "writeString",
-                args: vec![ast::ExprAST::LValue(
-                    ast::LValueAST::String("sdsdsd".to_string().into()),
-                )],
-            })],
+            body: vec![
+                ast::StatementAST::FunctionCall(ast::FnCallAST {
+                    name: "writeString",
+                    args: vec![ast::ExprAST::LValue(ast::LValueAST::String(
+                        "sdsdsd".to_string().into(),
+                    ))],
+                }),
+                ast::StatementAST::FunctionCall(ast::FnCallAST {
+                    name: "writeString",
+                    args: vec![ast::ExprAST::LValue(ast::LValueAST::String(
+                        "sdsdsd".to_string().into(),
+                    ))],
+                }),
+            ],
         }
     };
 
@@ -153,12 +153,16 @@ fn main()
         println!("Compilation failed, what? {}", res.unwrap_err());
         exit(1);
     }
+    let s = compiler.imm_as_string();
+    println!("{}", s);
 
-    compiler.optimize();
+    if args.optimize {
+        compiler.optimize();
+    }
 
     let s = compiler.imm_as_string();
     println!("{}", s);
 
-    let s = compiler.asm_as_string();
-    println!("{}", s);
+    // let s = compiler.asm_as_string();
+    // println!("{}", s);
 }
