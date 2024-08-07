@@ -86,8 +86,8 @@ mod parser_tests
                 },)),
                 op: InfixOperator::Add,
                 lhs: Box::new(ExprAST::InfixOp {
-                    rhs: Box::new(ExprAST::Call {
-                        function: "c",
+                    rhs: Box::new(ExprAST::FunctionCall(FnCallAST {
+                        name: "c",
                         args: vec![
                             ExprAST::Literal(Literal::Int(42)),
                             ExprAST::InfixOp {
@@ -100,13 +100,13 @@ mod parser_tests
                                 expr: Box::new(ExprAST::LValue(LValueAST::Identifier("i"))),
                             },),
                         ],
-                    }),
+                    })),
                     op: InfixOperator::Add,
                     lhs: Box::new(ExprAST::InfixOp {
-                        rhs: Box::new(ExprAST::Call {
-                            function: "b",
+                        rhs: Box::new(ExprAST::FunctionCall(FnCallAST {
+                            name: "b",
                             args: vec![],
-                        }),
+                        })),
                         op: InfixOperator::Add,
                         lhs: Box::new(ExprAST::LValue(LValueAST::Identifier("a"))),
                     }),
