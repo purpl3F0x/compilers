@@ -1,0 +1,7 @@
+test_global_mergin () : proc
+{
+    writeString("Hello world!\n");
+    writeString("Hello world!\n");
+    writeString("Hello world!\n");
+    writeString("Hello world!\n");
+}

@@ -152,9 +152,9 @@ impl<'ctx> Compiler<'ctx>
         pass_options.set_call_graph_profile(true);
         pass_options.set_merge_functions(true);
 
+        // Optimize using all the passes of -O3 optimization level
         const PASSES: &str = "default<O3>";
 
-        println!("Optimizing...");
         self.module
             .run_passes(PASSES, &target_machine, pass_options)
             .unwrap()
@@ -208,8 +208,8 @@ impl<'ctx> Compiler<'ctx>
                 "generic",
                 "",
                 inkwell::OptimizationLevel::None,
-                inkwell::targets::RelocMode::Default,
-                inkwell::targets::CodeModel::Default,
+                RelocMode::PIC,
+                CodeModel::Default,
             )
             .expect("Could not create target machine");
 

@@ -1,10 +1,13 @@
 mod arg_parser;
 use arg_parser::*;
 
-use alan::ast::{self, FunctionAST};
 use alan::codegen as cgen;
+use alan::lexer::*;
+use alan::parser::parse_function;
+use alan::Parser as alanParser;
 
 use std::process::exit;
+
 #[allow(dead_code)]
 #[allow(unused_variables)]
 use std::{
@@ -31,7 +34,7 @@ fn handle_io_error(err: ioError, what: Option<&str>) -> !
         eprintln!();
     }
 
-    std::process::exit(err.raw_os_error().unwrap_or(1));
+    exit(err.raw_os_error().unwrap_or(1));
 }
 
 fn main()
@@ -51,8 +54,6 @@ fn main()
     Open source file and create output files
     */
     if let Some(src_file) = args.src_file {
-        println!("Source file: {}", src_file.as_path().display());
-
         src_buffer = std::fs::read_to_string(&src_file).unwrap_or_else(|err| {
             handle_io_error(err, src_file.as_path().to_str());
         });
@@ -102,44 +103,40 @@ fn main()
         unreachable!();
     }
 
-    // if let Some(mut imm) = imm_stream {
-    //     write!(&mut imm, "42",).unwrap_or_else(|err| {
-    //         eprint!("Could not write to {}", imm_file_name);
-    //         handle_io_error(err, Some(imm_file_name.as_str()));
-    //     });
-    // }
+    // * Start the Lexer
+    let lex = alan::lexer::Token::lexer(src_buffer.as_str());
 
-    // if let Some(mut asm) = asm_stream {
-    //     write!(&mut asm, "17",).unwrap_or_else(|err| {
-    //         handle_io_error(err, Some(asm_file_name.as_str()));
-    //     });
-    // }
+    let token_iter = alan::get_token_iter(lex);
+    let token_stream = alan::token_iter_to_stream(token_iter, src_buffer.as_str());
 
-    let top: FunctionAST = {
-        FunctionAST {
-            name: "my_main",
-            r_type: ast::Type::Void,
-            params: vec![],
-            locals: vec![],
-            body: vec![
-                ast::StatementAST::FunctionCall(ast::FnCallAST {
-                    name: "writeString",
-                    args: vec![ast::ExprAST::LValue(ast::LValueAST::String(
-                        "sdsdsd".to_string().into(),
-                    ))],
-                }),
-                ast::StatementAST::FunctionCall(ast::FnCallAST {
-                    name: "writeString",
-                    args: vec![ast::ExprAST::LValue(ast::LValueAST::String(
-                        "sdsdsd".to_string().into(),
-                    ))],
-                }),
-            ],
+    // * Parse
+    let (tokens, errs) = parse_function().parse(token_stream).into_output_errors();
+
+    // * Check for errors
+    if errs.len() > 0 {
+        // todo: use ariadne to print errors
+        for e in errs {
+            let span = e.span();
+            let s = e.found().unwrap();
+            match s {
+                Token::Error(e) => {
+                    println!("Error at ({}): {}", span, e);
+                    return;
+                }
+                _ => {}
+            }
         }
-    };
+        exit(1);
+    }
+    //* Run Sementic
+    // todo: implement semantic analysis
 
-    let mut module = cgen::Context::create();
-    let mut compiler = cgen::Compiler::new(&mut module);
+    //* Compile the AST
+    let top = tokens.unwrap();
+
+    // Create llvm context
+    let mut context = cgen::Context::create();
+    let mut compiler = cgen::Compiler::new(&mut context);
     if let Some(src_file_name) = src_file_name {
         // src_file_name += "42";
         compiler.set_source_file_name(&src_file_name);
@@ -147,14 +144,10 @@ fn main()
 
     let res = compiler.compile(&top);
 
-    if Ok(()) == res {
-        println!("Compilation successful");
-    } else {
+    if Ok(()) != res {
         println!("Compilation failed, what? {}", res.unwrap_err());
         exit(1);
     }
-    let s = compiler.imm_as_string();
-    println!("{}", s);
 
     if args.optimize {
         compiler.optimize();

@@ -2,7 +2,8 @@
 
 use super::IntType;
 
-use logos::{Lexer, Logos, Span};
+use logos::Span;
+pub use logos::{Lexer, Logos};
 
 use std::fmt;
 use std::num::ParseIntError;
@@ -332,6 +333,8 @@ impl fmt::Display for LexingError
             LexingError::IntergerOverflow => write!(f, "Invalid Interger Value"),
 
             LexingError::NonAsciiCharacter(_span) => write!(f, "Non-Ascii character"),
+
+            LexingError::LexerError => write!(f, "Unexpected token"),
 
             _ => todo!("fmt::Display for LexingError incomplete"),
         }
