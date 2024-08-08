@@ -104,5 +104,10 @@ char readChar()
 
 void readString(const int n, char s[])
 {
-    fgets(s, n, stdin);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
+
+    (void)fgets(s, n, stdin);
+
+#pragma GCC diagnostic pop
 }

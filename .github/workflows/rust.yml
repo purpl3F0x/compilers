@@ -39,7 +39,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install LLVM and Clang
-        uses: purpl3F0x/install-llvm-action@18
+        uses: purpl3F0x/install-llvm-action@rebuild-dist
         with:
           version: "18"
           # cached: ${{ steps.cache-llvm.outputs.cache-hit }}
@@ -73,7 +73,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: alanc-dist
-          merge-multiple: true
           path: |
             target/release/alanc
             target/release/libalan.a
