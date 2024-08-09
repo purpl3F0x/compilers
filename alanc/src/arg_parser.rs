@@ -32,8 +32,9 @@ const MY_AWESOME_STYLE: Styles = Styles::styled()
             .required(true)
             .args(&["src_file", "stdio", "stdio_intermediate"])),
     help_template = "\n
-{before-help}{name} {version}\n
-{author-with-newline}{about-with-newline}\n
+{before-help}{name} {version}
+{about-with-newline}
+{author-with-newline}\n
 {usage-heading} {usage}
 
 {all-args}{after-help}\n

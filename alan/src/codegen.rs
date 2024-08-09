@@ -92,6 +92,12 @@ pub struct Compiler<'ctx>
 
 impl<'ctx> Compiler<'ctx>
 {
+    pub fn llvm_version() -> String
+    {
+        let (major, minor, patch) = inkwell::support::get_llvm_version();
+        format!("{}.{}.{}", major, minor, patch)
+    }
+
     pub fn new(context: &'ctx Context) -> Self
     {
         let module = context.create_module("main_module");
