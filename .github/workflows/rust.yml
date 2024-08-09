@@ -42,7 +42,8 @@ jobs:
         uses: purpl3F0x/install-llvm-action@rebuild-dist
         with:
           version: "18"
-          # cached: ${{ steps.cache-llvm.outputs.cache-hit }}
+          cached: ${{ steps.cache-llvm.outputs.cache-hit }}
+          
       - name: Install libncurses5
         if: runner.os == 'Linux'
         run: sudo apt update && sudo apt install -y libncurses5
