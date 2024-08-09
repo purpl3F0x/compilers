@@ -7,6 +7,7 @@
 *.asm
 *.imm
 *.ll
+*.bc
 *.S
 *.s
 *.o

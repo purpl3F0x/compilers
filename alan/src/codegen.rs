@@ -1,5 +1,9 @@
 use core::fmt;
-use std::borrow::Borrow;
+use std::any::Any;
+use std::borrow::{Borrow, BorrowMut};
+use std::f64::consts::E;
+use std::hash::Hash;
+use std::path::{Path, PathBuf};
 
 use super::ast::*;
 use super::IntType as AlanIntType;
@@ -8,6 +12,7 @@ use inkwell::builder::BuilderError;
 pub use inkwell::context::Context;
 
 use inkwell::support::LLVMString;
+use inkwell::types::{AnyType, AnyTypeEnum};
 use inkwell::values::AnyValue;
 use inkwell::values::AnyValueEnum;
 use inkwell::values::BasicMetadataValueEnum;
@@ -27,7 +32,7 @@ use inkwell::{
 };
 
 use llvm::LLVMValue;
-use llvm_sys as llvm;
+use llvm_sys::{self as llvm, target};
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
@@ -74,13 +79,15 @@ pub struct Compiler<'ctx>
     builder: Builder<'ctx>,
     module: Module<'ctx>,
 
-    variables: HashMap<String, PointerValue<'ctx>>,
-    // environment: Vec<HashMap<String, BasicValueEnum<'ctx>>>,
+    // hash map of the addresses of variabels and their underlying types
+    variables: HashMap<&'ctx str, (PointerValue<'ctx>, AnyTypeEnum<'ctx>)>,
+
     int_type: IntType<'ctx>,
     char_type: IntType<'ctx>,
-    int_ptr_type: PointerType<'ctx>,
+    int_ptr_type: PointerType<'ctx>, // ! llvm-18 uses opaque pointers, there no point doing this fix
     char_ptr_type: PointerType<'ctx>,
     proc_type: VoidType<'ctx>,
+    const_zero: IntValue<'ctx>,
 }
 
 impl<'ctx> Compiler<'ctx>
@@ -106,6 +113,8 @@ impl<'ctx> Compiler<'ctx>
         let char_ptr_type = context.ptr_type(AddressSpace::default());
         let proc_type = context.void_type();
 
+        let const_zero = int_type.const_zero();
+
         Self {
             context: context,
             builder: builder,
@@ -116,28 +125,13 @@ impl<'ctx> Compiler<'ctx>
             int_ptr_type: int_ptr_type,
             char_ptr_type: char_ptr_type,
             proc_type: proc_type,
+            const_zero: const_zero,
         }
     }
 
     pub fn optimize(&self)
     {
-        let config = InitializationConfig::default();
-
-        Target::initialize_all(&config);
-
-        let target_triple = TargetMachine::get_default_triple();
-        let target = Target::from_triple(&target_triple).unwrap();
-
-        let target_machine = target
-            .create_target_machine(
-                &target_triple,
-                "generic",
-                "",
-                OptimizationLevel::Aggressive,
-                RelocMode::PIC,
-                CodeModel::Default,
-            )
-            .unwrap();
+        let target_machine = self.generate_target(None, None, None).unwrap();
 
         let pass_options = PassBuilderOptions::create();
         pass_options.set_verify_each(true);
@@ -162,8 +156,10 @@ impl<'ctx> Compiler<'ctx>
 
     pub fn compile(&mut self, program: &'ctx FunctionAST) -> IRResult<()>
     {
+        // ? Enchancment, allow main to have signature of (int argc, char[] argv) ?
+
         // TODO: add the stdlib functions
-        self.append_std_functions();
+        self.load_stdlib();
 
         // Manually add the main function, to make sure ia has name of main
 
@@ -172,6 +168,29 @@ impl<'ctx> Compiler<'ctx>
         let basic_block = self.context.append_basic_block(main_func, "entry");
 
         self.builder.position_at_end(basic_block);
+
+        for local in &program.locals {
+            match local {
+                LocalDefinitionAST::VarDef { name, type_ } => {
+                    let type_ = self.get_type(type_);
+                    let ptr = self.builder.build_alloca(type_.into_int_type(), name);
+
+                    self.variables.insert(name, (ptr.unwrap(), type_));
+                }
+                LocalDefinitionAST::ArrayDef { name, type_, size } => {
+                    let ty = self.get_type(type_);
+                    let name = name.borrow();
+                    let size = self.int_type.const_int(*size as u64, false);
+
+                    let ptr = self
+                        .builder
+                        .build_array_alloca(ty.into_int_type(), size, name);
+
+                    self.variables.insert(name, (ptr.unwrap(), ty.clone()));
+                }
+                LocalDefinitionAST::FunctionDef(_) => todo!("FunctionDef"),
+            }
+        }
 
         // Generate function body
         for stmt in &program.body {
@@ -198,20 +217,7 @@ impl<'ctx> Compiler<'ctx>
 
     pub fn asm_as_string(&self) -> String
     {
-        let target_triple = TargetMachine::get_default_triple();
-        Target::initialize_all(&InitializationConfig::default());
-
-        let target = Target::from_triple(&target_triple).unwrap();
-        let target_machine = target
-            .create_target_machine(
-                &target_triple,
-                "generic",
-                "",
-                inkwell::OptimizationLevel::None,
-                RelocMode::PIC,
-                CodeModel::Default,
-            )
-            .expect("Could not create target machine");
+        let target_machine = self.generate_target(None, None, None).unwrap();
 
         let buf: inkwell::memory_buffer::MemoryBuffer = target_machine
             .write_to_memory_buffer(&self.module, inkwell::targets::FileType::Assembly)
@@ -220,21 +226,78 @@ impl<'ctx> Compiler<'ctx>
         String::from_utf8(buf.as_slice().to_vec()).unwrap()
     }
 
-    fn append_std_functions(&self)
+    pub fn generate_binary(&self, _output_file: &str) -> IRResult<()>
     {
-        // todo: add the stdlib functions
-        let write_interger_t = self.proc_type.fn_type(&[self.int_type.into()], false);
-        self.module
-            .add_function("writeInteger", write_interger_t, None);
-        let write_byte_t = self.proc_type.fn_type(&[self.char_type.into()], false);
-        self.module.add_function("writeByte", write_byte_t, None);
+        unimplemented!("Option to generate binary isn't implemented yet!");
+    }
 
-        let write_char_t = self.proc_type.fn_type(&[self.char_type.into()], false);
-        self.module.add_function("writeChar", write_char_t, None);
+    fn get_type(&self, type_: &Type) -> AnyTypeEnum<'ctx>
+    {
+        match type_ {
+            Type::Int => self.int_type.into(),
+            Type::Byte => self.char_type.into(),
+            Type::Ref(t) => self.get_type(t),
 
-        let write_string_t = self.proc_type.fn_type(&[self.char_ptr_type.into()], false);
-        self.module
-            .add_function("writeString", write_string_t, None);
+            Type::Void => self.proc_type.into(),
+            Type::Array(t) => {
+                // todo: this needs checking
+                //todo: also we know the size of the arrays
+                let elem_type = self.get_type(t);
+                let array_type = elem_type.into_array_type();
+                array_type.into()
+            }
+        }
+    }
+
+    fn generate_target(
+        &self,
+        opt_level: Option<inkwell::OptimizationLevel>,
+        cpu: Option<&str>,
+        features: Option<&str>,
+    ) -> IRResult<TargetMachine>
+    {
+        let target_triple = TargetMachine::get_default_triple();
+        Target::initialize_all(&InitializationConfig::default());
+
+        let target = Target::from_triple(&target_triple).unwrap();
+
+        target
+            .create_target_machine(
+                &target_triple,
+                cpu.unwrap_or("generic"),
+                features.unwrap_or(""),
+                opt_level.unwrap_or(inkwell::OptimizationLevel::None),
+                RelocMode::PIC,
+                CodeModel::Default,
+            )
+            .ok_or(IRError::String(
+                "Could not create target machine".to_string(),
+            ))
+    }
+
+    fn load_stdlib(&mut self)
+    {
+        // todo: add the stdlib functions !!!
+        use inkwell::memory_buffer::MemoryBuffer;
+        let memory = MemoryBuffer::create_from_memory_range(STDLIB_IR, "main_module");
+
+        let external_module = Module::parse_bitcode_from_buffer(&memory, self.context)
+            .expect("Failed to parse the bitcode");
+
+        // Manually add external declarations to the main module
+        for function in external_module.get_functions() {
+            if self
+                .module
+                .get_function(function.get_name().to_str().unwrap())
+                .is_none()
+            {
+                self.module.add_function(
+                    function.get_name().to_str().unwrap(),
+                    function.get_type(),
+                    None,
+                );
+            }
+        }
     }
 
     fn cgen_literal(&mut self, literal: &'ctx Literal) -> IRResult<IntValue<'ctx>>
@@ -254,6 +317,15 @@ impl<'ctx> Compiler<'ctx>
             ExprAST::InfixOp { lhs, op, rhs } => {
                 let lhs = self.cgen_expresion(lhs)?.into_int_value();
                 let rhs = self.cgen_expresion(rhs)?.into_int_value();
+
+                if lhs.get_type() != rhs.get_type() {
+                    return Err(IRError::String(
+                        format!(
+                            "Infix operator {:?} requires both operands to have the same type, got {} and {}",
+                            op, lhs.get_type(), rhs.get_type()
+                        ).to_string()
+                    ));
+                }
 
                 Ok(match op {
                     InfixOperator::Add => self.builder.build_int_add(lhs, rhs, "addtmp"),
@@ -305,7 +377,15 @@ impl<'ctx> Compiler<'ctx>
                         .as_basic_value_enum(),
                 })
             }
-            ExprAST::LValue(lval) => Ok(self.cgen_lvalue_load(lval)?.as_basic_value_enum()),
+            ExprAST::LValue(lval) => {
+                let (ptr, ty) = self.cgen_lvalue_load(lval)?;
+
+                Ok(self.builder.build_load(
+                    ty.into_int_type(),
+                    ptr,
+                    format!("load.{}", ptr.get_name().to_str().expect("")).as_str(),
+                )?)
+            }
 
             ExprAST::FunctionCall(fn_call) => {
                 //
@@ -317,51 +397,97 @@ impl<'ctx> Compiler<'ctx>
         }
     }
 
-    fn cgen_lvalue_load(&mut self, lval: &'ctx LValueAST) -> IRResult<PointerValue<'ctx>>
+    fn cgen_lvalue_load(
+        &mut self,
+        lval: &'ctx LValueAST,
+    ) -> IRResult<(PointerValue<'ctx>, AnyTypeEnum<'ctx>)>
     {
         match lval {
-            LValueAST::String(s) => Ok(self
-                .builder
-                .build_global_string_ptr(s, "tmpstr")?
-                .as_pointer_value()),
+            LValueAST::String(s) => {
+                let str = self
+                    .builder
+                    .build_global_string_ptr(s, "glob.str")?
+                    .as_pointer_value();
+
+                Ok((str, str.get_type().into()))
+            }
 
             LValueAST::Identifier(id) => {
-                let name = id.borrow();
-                let ptr: &PointerValue<'ctx> = self.variables.get(name).unwrap();
-                Ok(self
-                    .builder
-                    .build_load(self.int_ptr_type, *ptr, name)? // ! Fix Type (??)
-                    .into_pointer_value())
+                let name: &str = id.borrow();
+                if let Some(ptr) = self.variables.get(name) {
+                    Ok(*ptr)
+                } else {
+                    Err(IRError::String(format!("Variable {} not found", name)))
+                }
             }
+
             LValueAST::ArraySubscript { id, expr } => {
-                let expr_res = self.cgen_expresion(expr)?;
-                let ptr: &PointerValue<'ctx> = self.variables.get(*id).unwrap();
+                let expr_res = self.cgen_expresion(expr).unwrap().into_int_value();
+                let (ptr, ty) = self.variables.get(*id).unwrap();
+
                 let element_pointer = unsafe {
                     self.builder.build_gep(
-                        self.int_ptr_type,
+                        self.int_type,
                         *ptr,
-                        &[expr_res.into_int_value()],
-                        "element_ptr",
+                        &[expr_res],
+                        format!("gep_{}", id,).as_str(),
                     )
                 };
 
-                Ok(element_pointer?.into())
+                Ok((element_pointer?, ty.as_any_type_enum()))
             }
         }
     }
 
     fn cgen_fn_call(&mut self, fn_call: &'ctx FnCallAST) -> IRResult<AnyValueEnum<'ctx>>
     {
-        let func = self.module.get_function(fn_call.name).unwrap();
-        let args: Vec<BasicMetadataValueEnum> = fn_call
-            .args
-            .iter()
-            .map(|arg| self.cgen_expresion(arg).unwrap().into())
-            .collect();
+        let func = self
+            .module
+            .get_function(fn_call.name)
+            .ok_or(IRError::String(format!(
+                "Function {} not found",
+                fn_call.name
+            )))?;
+
+        let func_params = func.get_params();
+
+        if func.get_params().len() != fn_call.args.len() {
+            return Err(IRError::String(format!(
+                "Function {} expected {} arguments, got {}",
+                fn_call.name,
+                func.get_params().len(),
+                fn_call.args.len()
+            )));
+        }
+
+        let mut args: Vec<BasicMetadataValueEnum> = Vec::with_capacity(func_params.len());
+
+        for (arg, param) in fn_call.args.iter().zip(func_params.iter()) {
+            let arg = self.cgen_expresion(arg)?;
+
+            // Convert int to pointer, for named arguments, lvalue_load will get us their pointer, so it can be used as reference also
+            if arg.is_pointer_value() && param.is_int_value() {
+                let arg_ptr = arg.into_pointer_value();
+
+                let arg_val = self.builder.build_load(
+                    self.int_type,
+                    arg_ptr,
+                    format!("load.{}", arg_ptr.get_name().to_str().expect("")).as_str(),
+                )?;
+
+                args.push(arg_val.into_int_value().into());
+            } else {
+                args.push(arg.into());
+            }
+        }
 
         Ok(self
             .builder
-            .build_call(func, args.as_slice(), "calltmp")?
+            .build_call(
+                func,
+                args.as_slice(),
+                format!("call.{}", func.get_name().to_str().expect("")).as_str(),
+            )?
             .as_any_value_enum())
     }
 
@@ -373,10 +499,21 @@ impl<'ctx> Compiler<'ctx>
             }
 
             StatementAST::Assignment { lvalue, expr } => {
-                let lval_ptr = self.cgen_lvalue_load(lvalue)?;
-                let expr_res = self.cgen_expresion(expr)?;
+                if !matches!(lvalue, LValueAST::Identifier(_)) {
+                    return Err(IRError::String(
+                        "Only identifiers can be assigned to".to_string(),
+                    ));
+                }
+                // todo: this neeeds further checking
 
-                self.builder.build_store(lval_ptr, expr_res)?;
+                let expr_res = self.cgen_expresion(expr)?;
+                let (lval_ptr, lval_type) = self.cgen_lvalue_load(lvalue)?;
+
+                let e = expr_res
+                    .into_int_value()
+                    .const_truncate_or_bit_cast(lval_type.into_int_type());
+
+                self.builder.build_store(lval_ptr, e)?;
             }
 
             StatementAST::FunctionCall(fn_call) => {
@@ -398,3 +535,6 @@ impl<'ctx> Compiler<'ctx>
         Ok(())
     }
 }
+
+// ? append stdlib as bitcode ? (see here: https://github.com/hyperledger/solang/blob/06798cdeac6fd62ee98f5ae7da38f3af4933dc0f/src/emit/binary.rs#L1299)
+use stdlib::LIBALAN_BITCODE as STDLIB_IR;

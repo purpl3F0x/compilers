@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 default-members = ["alanc"]  # Hint default binary target
-members = [ "alanc", "alan"]
+members = [ "alanc", "alan", "stdlib"]
 
 [profile.release]
 opt-level = 3

@@ -9,6 +9,7 @@ workspace = "../"
 
 
 [dependencies]
+stdlib = { path = "../stdlib" }
 ariadne = { version = "0.4.0", features = ["auto-color"] }
 chumsky = { version = "1.0.0-alpha.6", features = [
     "label",
@@ -21,5 +22,4 @@ likely_stable = "0.1.2"
 logos = "0.14.0"
 inkwell = { version = "0.5.0", features = ["llvm18-0"] }
 llvm-sys = { package = "llvm-sys", version = "180", features = ["prefer-static"] }
-
 

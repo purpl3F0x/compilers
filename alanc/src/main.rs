@@ -116,16 +116,9 @@ fn main()
     if errs.len() > 0 {
         // todo: use ariadne to print errors
         for e in errs {
-            let span = e.span();
-            let s = e.found().unwrap();
-            match s {
-                Token::Error(e) => {
-                    println!("Error at ({}): {}", span, e);
-                    return;
-                }
-                _ => {}
-            }
+            println!("{:?}", e);
         }
+        println!("Compilation failed, exiting...");
         exit(1);
     }
     //* Run Sementic
