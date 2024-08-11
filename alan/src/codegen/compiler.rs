@@ -1,9 +1,4 @@
-use core::fmt;
-use std::any::Any;
-use std::borrow::{Borrow, BorrowMut};
-use std::f64::consts::E;
-use std::hash::Hash;
-use std::path::{Path, PathBuf};
+use std::borrow::Borrow;
 
 use super::ast::*;
 use super::IntType as AlanIntType;

@@ -6,16 +6,10 @@ use alan::lexer::*;
 use alan::parser::parse_function;
 use alan::Parser as alanParser;
 
-use std::borrow::Borrow;
 use std::process::exit;
 
-#[allow(dead_code)]
 #[allow(unused_variables)]
-use std::{
-    // fmt::{write, Write},
-    // fmt::{write, Debug},
-    io::{stdin, Error as ioError, Read},
-};
+use std::io::{stdin, Error as ioError, Read};
 
 fn handle_io_error(err: ioError, what: Option<&str>) -> !
 {
@@ -44,7 +38,7 @@ fn main()
     let mut src_buffer = String::new();
     let mut src_file_name: Option<String> = None;
 
-    let mode = args.mode();
+    // let mode = args.mode();
 
     let mut imm_file_name = String::new();
     let mut asm_file_name = String::new();
