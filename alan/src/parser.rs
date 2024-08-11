@@ -4,7 +4,6 @@ use ast::*;
 use chumsky::combinator::To;
 use lexer::*;
 
-
 pub fn parse_lvalue<'src, I>(
 ) -> impl Parser<'src, I, LValueAST<'src>, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
 where

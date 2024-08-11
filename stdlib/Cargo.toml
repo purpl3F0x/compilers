@@ -2,7 +2,6 @@
 name = "stdlib"
 version = "0.1.0"
 edition = "2021"
-type = "lib"
 
 [build-dependencies]
 regex = "^1.10.6"

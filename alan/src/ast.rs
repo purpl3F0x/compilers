@@ -2,6 +2,8 @@
 
 use super::*;
 
+// todo: make AST printer
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type
 {

@@ -1,7 +1,4 @@
 hello () : proc
-   j : int [16];
 {
-   writeInteger(j[1]);
-   -- j = j + 'c';
-   -- writeInteger(j);
+   writeString("Hello world!\n");
 }

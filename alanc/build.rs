@@ -28,7 +28,7 @@ fn main() -> shadow_rs::SdResult<()> {
         .expect("Failed to build standard library");
 
     //* Rebuild libalan.a if one of it's source files have changed
-    println!("cargo:rerun-if-changed=../stdlib/Makefile");
+    print!("cargo:rerun-if-changed=../stdlib/Makefile\n");
     let files = fs::read_dir("../stdlib")?;
     files
         .filter_map(|res| res.ok())
@@ -43,7 +43,7 @@ fn main() -> shadow_rs::SdResult<()> {
                 None
             }
         })
-        .for_each(|f| println!("cargo:rerun-if-changed={}", f.display()));
+        .for_each(|f| print!("cargo:rerun-if-changed={}\n", f.display()));
 
     //* Run shadow
     shadow_rs::new()
