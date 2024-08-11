@@ -46,8 +46,6 @@ pub struct Compiler<'ctx>
     int_type: IntType<'ctx>,
     char_type: IntType<'ctx>,
     bool_type: IntType<'ctx>,
-    int_ptr_type: PointerType<'ctx>, // ! llvm-18 uses opaque pointers, there no point doing this fix
-    char_ptr_type: PointerType<'ctx>,
     proc_type: VoidType<'ctx>,
     const_zero: IntValue<'ctx>,
 }
@@ -77,8 +75,6 @@ impl<'ctx> Compiler<'ctx>
         };
 
         let char_type = context.i8_type();
-        let int_ptr_type = context.ptr_type(AddressSpace::default());
-        let char_ptr_type = context.ptr_type(AddressSpace::default());
         let proc_type = context.void_type();
 
         let bool_type = context.bool_type();
@@ -95,8 +91,6 @@ impl<'ctx> Compiler<'ctx>
             int_type: int_type,
             char_type: char_type,
             bool_type: bool_type,
-            int_ptr_type: int_ptr_type,
-            char_ptr_type: char_ptr_type,
             proc_type: proc_type,
             const_zero: const_zero,
         }
