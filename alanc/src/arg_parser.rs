@@ -17,7 +17,7 @@ const MY_AWESOME_STYLE: Styles = Styles::styled()
     .literal(Ansi::Cyan.on_default().bold())
     .placeholder(Ansi::Blue.on_default());
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(
     version,
     long_version = CLAP_LONG_VERSION,
@@ -94,7 +94,7 @@ pub enum FileMode
 
 impl Args
 {
-    pub fn mode() -> FileMode
+    pub fn mode(&self) -> FileMode
     {
         if Self::parse().stdio {
             return FileMode::Stdio;

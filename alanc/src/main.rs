@@ -6,6 +6,7 @@ use alan::lexer::*;
 use alan::parser::parse_function;
 use alan::Parser as alanParser;
 
+use std::borrow::Borrow;
 use std::process::exit;
 
 #[allow(dead_code)]
@@ -13,8 +14,7 @@ use std::process::exit;
 use std::{
     // fmt::{write, Write},
     // fmt::{write, Debug},
-    fs::File,
-    io::{stdin, stdout, BufWriter, Error as ioError, Read, Write},
+    io::{stdin, Error as ioError, Read},
 };
 
 fn handle_io_error(err: ioError, what: Option<&str>) -> !
@@ -44,11 +44,10 @@ fn main()
     let mut src_buffer = String::new();
     let mut src_file_name: Option<String> = None;
 
+    let mode = args.mode();
+
     let mut imm_file_name = String::new();
     let mut asm_file_name = String::new();
-
-    let mut imm_stream: Option<BufWriter<Box<dyn std::io::Write>>> = None; // create a Boxed writer to either write to a file or stdout
-    let mut asm_stream: Option<BufWriter<Box<dyn std::io::Write>>> = None;
 
     /*
     Open source file and create output files
@@ -68,17 +67,6 @@ fn main()
 
         imm_file_name = imm_file_path.display().to_string();
         asm_file_name = asm_file_path.display().to_string();
-
-        let imm_file = File::create(&imm_file_path).unwrap_or_else(|err| {
-            handle_io_error(err, imm_file_path.to_str());
-        });
-
-        let asm_file = File::create(&asm_file_path).unwrap_or_else(|err| {
-            handle_io_error(err, Some(imm_file_name.as_str()));
-        });
-
-        imm_stream = Some(BufWriter::new(Box::new(imm_file)));
-        asm_stream = Some(BufWriter::new(Box::new(asm_file)));
     } else if args.stdio {
         println!("Reading from stdin and writing to stdout");
         stdin()
@@ -86,9 +74,6 @@ fn main()
             .unwrap_or_else(|err| {
                 handle_io_error(err, Some("stdin"));
             });
-
-        asm_stream = Some(BufWriter::new(Box::new(stdout().lock())));
-        asm_file_name = "stdout".to_string();
     } else if args.stdio_intermediate {
         println!("Reading from stdin and writing intermediate code to stdout");
         stdin()
@@ -96,9 +81,6 @@ fn main()
             .unwrap_or_else(|err| {
                 handle_io_error(err, Some("stdin"));
             });
-
-        imm_stream = Some(BufWriter::new(Box::new(stdout().lock())));
-        imm_file_name = "stdout".to_string();
     } else {
         unreachable!();
     }
@@ -151,4 +133,16 @@ fn main()
 
     // let s = compiler.asm_as_string();
     // println!("{}", s);
+
+    // match mode {
+    //     FileMode::File => {
+
+    //     }
+    //     FileMode::Stdio => {
+    //         println!("{}", compiler.asm_as_string());
+    //     }
+    //     FileMode::StdioIntermediate => {
+    //         println!("{}", compiler.imm_as_string());
+    //     }
+    // }
 }
