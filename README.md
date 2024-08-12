@@ -2,15 +2,15 @@
 # Alan Compiler
 
 Semester project fot 2024 Comilers' class.
-### Authors
+### Author
 
 - [Stavros Avramidis](https://www.github.com/purpl3F0x)
 
 ___
 The project contains 3 subdirectories (subcrates).
-    - **[alan](./alan/)**: The compiler backend for the Alan language
-    - **[alanc](./alanc/)**: The cli frontend of the compiler
-    - **[stdlib](./stdlib/)**: The Alan standard library, writen in C (which at it's current state relies on libc, so it was wide platform compatibility)
+- **[alan](./alan/)**: The compiler backend for the Alan language
+- **[alanc](./alanc/)**: The cli frontend of the compiler
+- **[stdlib](./stdlib/)**: The Alan standard library, writen in C (which at it's current state relies on libc, so we can target every plattform &/ architecture)
 ___
 
 ### Run Locally
