@@ -18,7 +18,7 @@ use inkwell::{
     module::Module,
     passes::PassBuilderOptions,
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine},
-    types::{BasicTypeEnum, IntType, PointerType, VoidType},
+    types::{BasicMetadataTypeEnum, BasicTypeEnum, IntType, PointerType, VoidType},
     values::{AsValueRef, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue},
     AddressSpace, IntPredicate,
 };
@@ -51,6 +51,11 @@ impl<'ctx> Compiler<'ctx>
     {
         let (major, minor, patch) = inkwell::support::get_llvm_version();
         format!("{}.{}.{}", major, minor, patch)
+    }
+
+    pub fn system_triple() -> String
+    {
+        String::from_utf8_lossy(TargetMachine::get_default_triple().as_str().to_bytes()).to_string()
     }
 
     pub fn new(context: &'ctx Context) -> Self
@@ -120,7 +125,7 @@ impl<'ctx> Compiler<'ctx>
     {
         // ? Enchancment, allow main to have signature of (int argc, char[] argv) ?
 
-        self.load_stdlib();
+        self.load_stdlib()?;
 
         // Manually add the main function, to make sure ia has name of main
 
@@ -251,6 +256,26 @@ impl<'ctx> Compiler<'ctx>
         }
     }
 
+    fn type_to_any_type(&self, ty: &Type) -> AnyTypeEnum<'ctx>
+    {
+        match ty {
+            Type::Int => self.int_type.into(),
+            Type::Byte => self.char_type.into(),
+            Type::Void => self.proc_type.into(),
+            _ => todo!(),
+        }
+    }
+
+    fn type_to_basic_type(&self, ty: &Type) -> BasicTypeEnum<'ctx>
+    {
+        match ty {
+            Type::Int => self.int_type.into(),
+            Type::Byte => self.char_type.into(),
+            Type::Void => panic!("Void type is not a basic type"), // todo: fix this, so it can return result
+            _ => todo!(),
+        }
+    }
+
     fn generate_target(
         &self,
         opt_level: Option<inkwell::OptimizationLevel>,
@@ -277,14 +302,13 @@ impl<'ctx> Compiler<'ctx>
             ))
     }
 
-    fn load_stdlib(&mut self)
+    fn load_stdlib(&mut self) -> IRResult<()>
     {
         // todo: add the stdlib functions !!!
         use inkwell::memory_buffer::MemoryBuffer;
         let memory = MemoryBuffer::create_from_memory_range(STDLIB_IR, "main_module");
 
-        let external_module = Module::parse_bitcode_from_buffer(&memory, self.context)
-            .expect("Failed to parse the bitcode");
+        let external_module = Module::parse_bitcode_from_buffer(&memory, self.context)?;
 
         // Manually add external declarations to the main module
         for function in external_module.get_functions() {
@@ -300,6 +324,8 @@ impl<'ctx> Compiler<'ctx>
                 );
             }
         }
+
+        Ok(())
     }
 
     fn cgen_literal(&mut self, literal: &'ctx Literal) -> IRResult<IntValue<'ctx>>
