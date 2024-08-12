@@ -1,15 +1,38 @@
 pub use clap::Parser;
 
-use build::CLAP_LONG_VERSION;
 use clap::{
     builder::styling::{AnsiColor as Ansi, Styles},
     ArgGroup,
 };
+
 use shadow_rs::shadow;
 use std::ffi::OsStr;
 use std::path::PathBuf;
 
 shadow!(build);
+
+fn my_long_version() -> String
+{
+    use build::*;
+
+    format!(
+        r#"{}
+branch: {}
+commit_hash: {}
+build_time: {}
+build_env: {} - {}
+LLVM Version:{}
+host-os:{}"#,
+        PKG_VERSION,
+        BRANCH,
+        SHORT_COMMIT,
+        BUILD_TIME,
+        RUST_VERSION,
+        RUST_CHANNEL,
+        alan::codegen::Compiler::llvm_version(),
+        alan::codegen::Compiler::system_triple()
+    )
+}
 
 const MY_AWESOME_STYLE: Styles = Styles::styled()
     .header(Ansi::Green.on_default().bold())
@@ -20,7 +43,7 @@ const MY_AWESOME_STYLE: Styles = Styles::styled()
 #[derive(Parser, Debug, Clone)]
 #[command(
     version,
-    long_version = CLAP_LONG_VERSION,
+    long_version =  my_long_version(),
     disable_version_flag = true,
     author,
     about, // set from description  in Cargo.toml
