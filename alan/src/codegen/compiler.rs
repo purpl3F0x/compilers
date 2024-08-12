@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 
 use super::ast::*;
 use super::IntType as AlanIntType;
+use super::Scopes;
 
 // ? append stdlib as bitcode ? (see here: https://github.com/hyperledger/solang/blob/06798cdeac6fd62ee98f5ae7da38f3af4933dc0f/src/emit/binary.rs#L1299)
 use stdlib::LIBALAN_BITCODE as STDLIB_IR;
@@ -35,7 +36,9 @@ pub struct Compiler<'ctx>
     module: Module<'ctx>,
 
     // For Bookeeping
-    variables: HashMap<&'ctx str, (PointerValue<'ctx>, IRType)>, // hash map of the addresses of variabels and their underlying types
+    // todo: use ID instead of name
+    // hash map of the addresses of variabels and their underlying types
+    scopes: Scopes<&'ctx str, (PointerValue<'ctx>, IRType)>,
 
     // Types
     int_type: IntType<'ctx>,
@@ -62,7 +65,6 @@ impl<'ctx> Compiler<'ctx>
     {
         let module = context.create_module("main_module");
         let builder = context.create_builder();
-        let variables = HashMap::new();
 
         // Future proofing for different architectures
         let int_type = match std::mem::size_of::<AlanIntType>() {
@@ -86,7 +88,7 @@ impl<'ctx> Compiler<'ctx>
             builder: builder,
             module: module,
 
-            variables: variables,
+            scopes: Scopes::new(),
 
             int_type: int_type,
             char_type: char_type,
@@ -135,33 +137,8 @@ impl<'ctx> Compiler<'ctx>
 
         self.builder.position_at_end(basic_block);
 
-        for local in &program.locals {
-            match local {
-                LocalDefinitionAST::VarDef { name, type_ } => {
-                    let ty = self.get_irtype(type_);
-                    let ptr = self
-                        .builder
-                        .build_alloca(self.from_irtype(&ty).into_int_type(), name);
-
-                    self.variables.insert(name, (ptr.unwrap(), ty));
-                }
-                LocalDefinitionAST::ArrayDef { name, type_, size } => {
-                    let ty = self.get_irtype(type_);
-                    let name = name.borrow();
-                    let ir_type = ty.into_array_type(*size);
-                    let size = self.int_type.const_int(*size as u64, false);
-
-                    let ptr = self.builder.build_array_alloca(
-                        self.from_irtype(&ty).into_int_type(),
-                        size,
-                        name,
-                    );
-
-                    self.variables.insert(name, (ptr.unwrap(), ir_type));
-                }
-                LocalDefinitionAST::FunctionDef(_) => todo!("FunctionDef"),
-            }
-        }
+        self.scopes.push();
+        self.cgen_locals(&program.locals)?;
         self.builder.position_at_end(basic_block);
 
         // Generate function body
@@ -476,7 +453,7 @@ impl<'ctx> Compiler<'ctx>
 
             LValueAST::Identifier(id) => {
                 let name: &str = id.borrow();
-                if let Some(ptr) = self.variables.get(name) {
+                if let Some(ptr) = self.scopes.get_from_last(name) {
                     Ok(ptr.clone())
                 } else {
                     Err(IRError::String(format!("undeclared undeclared '{}'", name)))
@@ -494,8 +471,8 @@ impl<'ctx> Compiler<'ctx>
                 let expr_res = expr_res.0.into_int_value();
 
                 let (ptr, ty) = self
-                    .variables
-                    .get(*id)
+                    .scopes
+                    .get_from_last(*id)
                     .ok_or(IRError::String(format!("undeclared undeclared '{}'", id)))?;
 
                 // make sure we are subscripting an array
@@ -509,8 +486,8 @@ impl<'ctx> Compiler<'ctx>
 
                 let element_pointer = unsafe {
                     self.builder.build_in_bounds_gep(
-                        self.from_irtype(ty).into_array_type(), // ? this should be ok for now, we only have 1D arrays
-                        *ptr,
+                        self.from_irtype(&ty).into_array_type(), // ? this should be ok for now, we only have 1D arrays
+                        ptr,
                         &[self.const_zero, expr_res],
                         format!("arraysub.{}", id).as_str(),
                     )
@@ -834,5 +811,87 @@ impl<'ctx> Compiler<'ctx>
         }
 
         Ok(())
+    }
+
+    fn cgen_locals(&mut self, locals: &'ctx Vec<LocalDefinitionAST<'ctx>>) -> IRResult<()>
+    {
+        for local in locals {
+            // todo: check for duplicates
+            match local {
+                LocalDefinitionAST::VarDef { name, type_ } => {
+                    let ty = self.get_irtype(type_);
+                    let ptr = self
+                        .builder
+                        .build_alloca(self.from_irtype(&ty).into_int_type(), name)?;
+
+                    self.scopes
+                        .try_insert(name, (ptr, ty))
+                        .map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
+                }
+                LocalDefinitionAST::ArrayDef { name, type_, size } => {
+                    let ty = self.get_irtype(type_);
+                    let name = name.borrow();
+                    let ir_type = ty.into_array_type(*size);
+                    let size = self.int_type.const_int(*size as u64, false);
+
+                    let ptr = self.builder.build_array_alloca(
+                        self.from_irtype(&ty).into_int_type(),
+                        size,
+                        name,
+                    )?;
+
+                    self.scopes
+                        .try_insert(name, (ptr, ir_type))
+                        .map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
+                }
+                LocalDefinitionAST::FunctionDef(f) => {
+                    self.cgen_function(f)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn cgen_function(&mut self, func: &'ctx FunctionAST<'ctx>) -> IRResult<FunctionValue<'ctx>>
+    {
+        let name = func.name;
+
+        let return_type = self.type_to_any_type(&func.r_type);
+
+        let mut param_types: Vec<BasicMetadataTypeEnum> = Vec::with_capacity(func.params.len());
+        for param in &func.params {
+            param_types.push(self.type_to_basic_type(&param.type_).into());
+        }
+
+        let func_type = match return_type {
+            AnyTypeEnum::VoidType(_) => self.proc_type.fn_type(param_types.as_slice(), false),
+            AnyTypeEnum::IntType(_) => self.int_type.fn_type(param_types.as_slice(), false),
+            _ => unreachable!(),
+        };
+
+        let function = self.module.add_function(name, func_type, None);
+
+        let block = self.context.append_basic_block(function, "entry");
+
+        self.builder.position_at_end(block);
+
+        // Create new scope
+        self.scopes.push();
+
+        for (param, arg) in function.get_params().iter().zip(func.params.iter()) {
+            let arg = self.builder.build_alloca(param.get_type(), arg.name);
+            todo!("Add paramaneter to scope");
+        }
+        self.cgen_locals(&func.locals)?;
+
+        // Generte function body
+        for stmt in &func.body {
+            self.cgen_statement(stmt)?;
+        }
+
+        self.scopes.pop();
+        Ok(function)
+
+        // build return
     }
 }
