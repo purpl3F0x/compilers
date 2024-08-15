@@ -466,14 +466,15 @@ where
 
 // This parser will be used to parse the stdlib functions, and generate extern llvm binindings
 // pub fn extern_func_parser<'src, I>(
-// ) -> impl Parser<'src, I, Vec<FunctionAST<'src>>, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+// ) -> impl Parser<'src, I, Vec<FunctionPrototypeAST<'src>>, extra::Err<Rich<'src, Token<'src>, Span>>>
+//        + Clone
 // where
 //     I: ValueInput<'src, Token = Token<'src>, Span = SimpleSpan>,
 // {
 //     // Most of the code is copy paste from parse_function
 //     // but it's easier to have a separate function for the extern functions
 
-//     recursive(|func| {
+//     recursive(|_| {
 //         let ident = select! {
 //            Token::Identifier(id) => id,
 //         }
@@ -501,10 +502,14 @@ where
 //             .labelled("parameter type");
 
 //         let fparam = ident
+//             .or_not()
 //             .clone()
 //             .then_ignore(just(Token::Colon))
 //             .then(parameters_type)
-//             .map(|(name, type_)| VarDefAST { name, type_ })
+//             .map(|(name, type_)| VarDefAST {
+//                 name: name.unwrap_or(""),
+//                 type_,
+//             })
 //             .labelled("function parameter");
 
 //         let fparams = fparam
@@ -527,12 +532,10 @@ where
 //             .then_ignore(just(Token::Colon))
 //             .then(r_type)
 //             .then_ignore(just(Token::SemiColon))
-//             .map(|((name, params), r_type)| FunctionAST {
+//             .map(|((name, params), r_type)| FunctionPrototypeAST {
 //                 name,
 //                 r_type,
 //                 params,
-//                 locals: vec![],
-//                 body: vec![],
 //             });
 
 //         func_def.repeated().collect::<Vec<_>>()

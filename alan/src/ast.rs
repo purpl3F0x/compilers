@@ -1,5 +1,7 @@
 #![cfg_attr(debug_assertions, allow(dead_code))]
 
+use core::fmt;
+
 use super::*;
 
 // todo: make AST printer
@@ -195,4 +197,27 @@ pub struct FnCallAST<'a>
 {
     pub name: &'a str,
     pub args: Vec<ExprAST<'a>>,
+}
+
+impl fmt::Display for InfixOperator
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+    {
+        let op = match self {
+            InfixOperator::Add => "+",
+            InfixOperator::Sub => "-",
+            InfixOperator::Mul => "*",
+            InfixOperator::Div => "/",
+            InfixOperator::Mod => "%",
+            InfixOperator::Equal => "==",
+            InfixOperator::NotEqual => "!=",
+            InfixOperator::Greater => ">",
+            InfixOperator::Less => "<",
+            InfixOperator::GreaterOrEqual => ">=",
+            InfixOperator::LessOrEqual => "<=",
+            InfixOperator::LogicAnd => "&",
+            InfixOperator::LogicOr => "|",
+        };
+        write!(f, "{}", op)
+    }
 }

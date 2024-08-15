@@ -1,9 +1,12 @@
 use std::borrow::Borrow;
 
 use super::ast::*;
+use super::IRFunctionType;
 use super::IntType as AlanIntType;
 use super::Scopes;
+use super::{IRError, IRResult, IRType};
 
+use inkwell::values::CallSiteValue;
 // ? append stdlib as bitcode ? (see here: https://github.com/hyperledger/solang/blob/06798cdeac6fd62ee98f5ae7da38f3af4933dc0f/src/emit/binary.rs#L1299)
 use stdlib::LIBALAN_BITCODE as STDLIB_IR;
 
@@ -16,7 +19,7 @@ use inkwell::values::BasicMetadataValueEnum;
 use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
-    module::Module,
+    module::{Linkage, Module},
     passes::PassBuilderOptions,
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine},
     types::{BasicMetadataTypeEnum, BasicTypeEnum, IntType, PointerType, VoidType},
@@ -24,12 +27,7 @@ use inkwell::{
     AddressSpace, IntPredicate,
 };
 
-use std::collections::HashMap;
-
-use super::{IRError, IRResult, IRType};
-
-pub struct Compiler<'ctx>
-{
+pub struct Compiler<'ctx> {
     // LLVM
     context: &'ctx Context,
     builder: Builder<'ctx>,
@@ -39,30 +37,29 @@ pub struct Compiler<'ctx>
     // todo: use ID instead of name
     // hash map of the addresses of variabels and their underlying types
     scopes: Scopes<&'ctx str, (PointerValue<'ctx>, IRType)>,
+    functions: Scopes<&'ctx str, (FunctionValue<'ctx>, IRFunctionType)>,
 
     // Types
     int_type: IntType<'ctx>,
     char_type: IntType<'ctx>,
     bool_type: IntType<'ctx>,
     proc_type: VoidType<'ctx>,
+    ptr_type: PointerType<'ctx>,
     const_zero: IntValue<'ctx>,
+
+    int_reference_attribute: inkwell::attributes::Attribute,
+    char_reference_attribute: inkwell::attributes::Attribute,
 }
 
-impl<'ctx> Compiler<'ctx>
-{
-    pub fn llvm_version() -> String
-    {
+impl<'ctx> Compiler<'ctx> {
+    pub fn llvm_version() -> String {
         let (major, minor, patch) = inkwell::support::get_llvm_version();
         format!("{}.{}.{}", major, minor, patch)
     }
 
-    pub fn system_triple() -> String
-    {
-        String::from_utf8_lossy(TargetMachine::get_default_triple().as_str().to_bytes()).to_string()
-    }
+    pub fn system_triple() -> String { String::from_utf8_lossy(TargetMachine::get_default_triple().as_str().to_bytes()).to_string() }
 
-    pub fn new(context: &'ctx Context) -> Self
-    {
+    pub fn new(context: &'ctx Context) -> Self {
         let module = context.create_module("main_module");
         let builder = context.create_builder();
 
@@ -78,10 +75,13 @@ impl<'ctx> Compiler<'ctx>
 
         let char_type = context.i8_type();
         let proc_type = context.void_type();
-
         let bool_type = context.bool_type();
-
+        let ptr_type = context.ptr_type(AddressSpace::default());
         let const_zero = int_type.const_zero();
+        let attr_id = inkwell::attributes::Attribute::get_named_enum_kind_id("dereferenceable");
+
+        let int_reference_attribute = context.create_enum_attribute(attr_id, std::mem::size_of::<AlanIntType>() as u64);
+        let char_reference_attribute = context.create_enum_attribute(attr_id, 1 as u64);
 
         Self {
             context: context,
@@ -89,17 +89,20 @@ impl<'ctx> Compiler<'ctx>
             module: module,
 
             scopes: Scopes::new(),
+            functions: Scopes::new(),
 
             int_type: int_type,
             char_type: char_type,
             bool_type: bool_type,
             proc_type: proc_type,
+            ptr_type: ptr_type,
             const_zero: const_zero,
+            int_reference_attribute: int_reference_attribute,
+            char_reference_attribute: char_reference_attribute,
         }
     }
 
-    pub fn optimize(&self)
-    {
+    pub fn optimize(&self) {
         let target_machine = self.generate_target(None, None, None).unwrap();
 
         let pass_options = PassBuilderOptions::create();
@@ -118,15 +121,13 @@ impl<'ctx> Compiler<'ctx>
         // Optimize using all the passes of -O3 optimization level
         const PASSES: &str = "default<O3>";
 
-        self.module
-            .run_passes(PASSES, &target_machine, pass_options)
-            .unwrap()
+        self.module.run_passes(PASSES, &target_machine, pass_options).unwrap()
     }
 
-    pub fn compile(&mut self, program: &'ctx FunctionAST) -> IRResult<()>
-    {
+    pub fn compile(&mut self, program: &'ctx FunctionAST) -> IRResult<()> {
         // ? Enchancment, allow main to have signature of (int argc, char[] argv) ?
 
+        self.functions.push();
         self.load_stdlib()?;
 
         // Manually add the main function, to make sure ia has name of main
@@ -138,49 +139,41 @@ impl<'ctx> Compiler<'ctx>
         self.builder.position_at_end(basic_block);
 
         self.scopes.push();
+
         self.cgen_locals(&program.locals)?;
         self.builder.position_at_end(basic_block);
 
         // Generate function body
-        for stmt in &program.body {
-            self.cgen_statement(stmt)?;
-        }
+        self.cgen_statments(&program.body)?;
 
         // Hardcoded return void() function, should have passed semantic
-        let _ = self.builder.build_return(None);
+        self.builder.build_return(None)?;
 
         Ok(self.module.verify()?)
+        // Ok(())
     }
 
-    pub fn set_source_file_name(&self, name: &str)
-    {
-        self.module.set_source_file_name(name);
-    }
+    pub fn set_source_file_name(&self, name: &str) { self.module.set_source_file_name(name); }
 
-    pub fn imm_as_string(&self) -> String
-    {
+    pub fn imm_as_string(&self) -> String {
         // todo! run at least an -O0 pass, to get rid of dead functions
         self.module.print_to_string().to_string()
     }
 
-    pub fn asm_as_string(&self) -> String
-    {
+    pub fn asm_as_string(&self) -> String {
         let target_machine = self.generate_target(None, None, None).unwrap();
 
-        let buf: inkwell::memory_buffer::MemoryBuffer = target_machine
-            .write_to_memory_buffer(&self.module, inkwell::targets::FileType::Assembly)
-            .unwrap();
+        let buf: inkwell::memory_buffer::MemoryBuffer =
+            target_machine.write_to_memory_buffer(&self.module, inkwell::targets::FileType::Assembly).unwrap();
 
         String::from_utf8(buf.as_slice().to_vec()).unwrap()
     }
 
-    pub fn generate_binary(&self, _output_file: &str) -> IRResult<()>
-    {
+    pub fn generate_binary(&self, _output_file: &str) -> IRResult<()> {
         unimplemented!("Option to generate binary isn't implemented yet!");
     }
 
-    fn get_irtype(&self, type_: &Type) -> IRType
-    {
+    fn get_irtype(&self, type_: &Type) -> IRType {
         match type_ {
             Type::Int => IRType::Int,
             Type::Byte => IRType::Byte,
@@ -188,14 +181,14 @@ impl<'ctx> Compiler<'ctx>
             Type::Array(ty) => {
                 // todo: this needs checking
                 //todo: also we know the size of the arrays
-                self.get_irtype(ty).into_array_type(0)
+                // todo!("arrays are not implemented yet")
+                self.get_irtype(&ty).into_array_type(-1)
             }
-            Type::Ref(ty) => self.get_irtype(ty).into_reference_type(),
+            Type::Ref(ty) => self.get_irtype(&ty).into_reference_type(),
         }
     }
 
-    fn from_irtype(&self, ty: &IRType) -> AnyTypeEnum<'ctx>
-    {
+    fn from_irtype(&self, ty: &IRType) -> AnyTypeEnum<'ctx> {
         match ty {
             IRType::Int => self.int_type.into(),
             IRType::Byte => self.char_type.into(),
@@ -210,31 +203,11 @@ impl<'ctx> Compiler<'ctx>
             }
             IRType::Pointer(ty) => self.from_irtype(ty),
 
-            _ => todo!(),
+            IRType::Reference(ty) => self.from_irtype(ty),
         }
     }
 
-    fn int_type_to_irtype(&self, ty: IntValue<'ctx>) -> IRType
-    {
-        match ty.get_type().get_bit_width() {
-            8 => IRType::Byte,
-            _ => IRType::Int, // good enough for Australia (for now)
-        }
-    }
-
-    fn any_value_enum_to_irtype(&self, ty: AnyValueEnum<'ctx>) -> IRType
-    {
-        match ty {
-            AnyValueEnum::IntValue(_) => self.int_type_to_irtype(ty.into_int_value()),
-            AnyValueEnum::PointerValue(_) => {
-                IRType::Pointer(Box::new(self.any_value_enum_to_irtype(ty)))
-            }
-            _ => unimplemented!(),
-        }
-    }
-
-    fn type_to_any_type(&self, ty: &Type) -> AnyTypeEnum<'ctx>
-    {
+    fn type_to_any_type(&self, ty: &Type) -> AnyTypeEnum<'ctx> {
         match ty {
             Type::Int => self.int_type.into(),
             Type::Byte => self.char_type.into(),
@@ -243,13 +216,13 @@ impl<'ctx> Compiler<'ctx>
         }
     }
 
-    fn type_to_basic_type(&self, ty: &Type) -> BasicTypeEnum<'ctx>
-    {
+    fn type_to_basic_type(&self, ty: &Type) -> BasicTypeEnum<'ctx> {
         match ty {
             Type::Int => self.int_type.into(),
             Type::Byte => self.char_type.into(),
-            Type::Void => panic!("Void type is not a basic type"), // todo: fix this, so it can return result
-            _ => todo!(),
+            Type::Void => panic!("Void type is not a basic type"), // todo: fix this, so it can return result ??
+            Type::Ref(_ty) => self.ptr_type.into(),
+            Type::Array(_ty) => self.ptr_type.into(),
         }
     }
 
@@ -258,8 +231,7 @@ impl<'ctx> Compiler<'ctx>
         opt_level: Option<inkwell::OptimizationLevel>,
         cpu: Option<&str>,
         features: Option<&str>,
-    ) -> IRResult<TargetMachine>
-    {
+    ) -> IRResult<TargetMachine> {
         let target_triple = TargetMachine::get_default_triple();
         Target::initialize_all(&InitializationConfig::default());
 
@@ -274,13 +246,11 @@ impl<'ctx> Compiler<'ctx>
                 RelocMode::PIC,
                 CodeModel::Default,
             )
-            .ok_or(IRError::String(
-                "Could not create target machine".to_string(),
-            ))
+            .ok_or(IRError::String("Could not create target machine".to_string()))
     }
 
-    fn load_stdlib(&mut self) -> IRResult<()>
-    {
+    /// Load the stdlib into the module, the stdlib symbol table is hardcoded in the stdlib
+    fn load_stdlib(&mut self) -> IRResult<()> {
         // todo: add the stdlib functions !!!
         use inkwell::memory_buffer::MemoryBuffer;
         let memory = MemoryBuffer::create_from_memory_range(STDLIB_IR, "main_module");
@@ -289,165 +259,251 @@ impl<'ctx> Compiler<'ctx>
 
         // Manually add external declarations to the main module
         for function in external_module.get_functions() {
-            if self
-                .module
-                .get_function(function.get_name().to_str().unwrap())
-                .is_none()
-            {
-                self.module.add_function(
-                    function.get_name().to_str().unwrap(),
+            let funct_name = function.get_name().to_str().unwrap();
+            if self.module.get_function(funct_name).is_none() {
+                let f_val = self.module.add_function(
+                    funct_name,
                     function.get_type(),
-                    None,
+                    None, // todo: private linkage ?
                 );
             }
         }
 
+        self.functions
+            .try_insert(
+                "writeInteger",
+                (self.module.get_function("writeInteger").unwrap(), IRFunctionType::new(IRType::Void, vec![IRType::Int])),
+            )
+            .unwrap();
+        self.functions
+            .try_insert(
+                "writeByte",
+                (self.module.get_function("writeByte").unwrap(), IRFunctionType::new(IRType::Void, vec![IRType::Byte])),
+            )
+            .unwrap();
+
+        self.functions
+            .try_insert(
+                "writeChar",
+                (self.module.get_function("writeChar").unwrap(), IRFunctionType::new(IRType::Void, vec![IRType::Byte])),
+            )
+            .unwrap();
+
+        self.functions
+            .try_insert(
+                "writeString",
+                (
+                    self.module.get_function("writeString").unwrap(),
+                    IRFunctionType::new(IRType::Void, vec![IRType::Reference(Box::new(IRType::Byte))]),
+                ),
+            )
+            .unwrap();
+
+        self.functions
+            .try_insert("readInteger", (self.module.get_function("readInteger").unwrap(), IRFunctionType::new(IRType::Int, vec![])))
+            .unwrap();
+        self.functions
+            .try_insert("readByte", (self.module.get_function("readByte").unwrap(), IRFunctionType::new(IRType::Byte, vec![])))
+            .unwrap();
+        self.functions
+            .try_insert("readChar", (self.module.get_function("readChar").unwrap(), IRFunctionType::new(IRType::Byte, vec![])))
+            .unwrap();
+        self.functions
+            .try_insert(
+                "readString",
+                (
+                    self.module.get_function("readString").unwrap(),
+                    IRFunctionType::new(
+                        IRType::Reference(Box::new(IRType::Void)),
+                        vec![IRType::Int, IRType::Reference(Box::new(IRType::Byte))],
+                    ),
+                ),
+            )
+            .unwrap();
+        self.functions
+            .try_insert("extend", (self.module.get_function("extend").unwrap(), IRFunctionType::new(IRType::Int, vec![IRType::Byte])))
+            .unwrap();
+        self.functions
+            .try_insert("shrink", (self.module.get_function("shrink").unwrap(), IRFunctionType::new(IRType::Byte, vec![IRType::Int])))
+            .unwrap();
+
+        self.functions
+            .try_insert(
+                "strlen",
+                (
+                    self.module.get_function("strlen").unwrap(),
+                    IRFunctionType::new(IRType::Int, vec![IRType::Reference(Box::new(IRType::Byte))]),
+                ),
+            )
+            .unwrap();
+
+        self.functions
+            .try_insert(
+                "strcmp",
+                (
+                    self.module.get_function("strcmp").unwrap(),
+                    IRFunctionType::new(
+                        IRType::Int,
+                        vec![IRType::Reference(Box::new(IRType::Byte)), IRType::Reference(Box::new(IRType::Byte))],
+                    ),
+                ),
+            )
+            .unwrap();
+
+        self.functions
+            .try_insert(
+                "strcpy",
+                (
+                    self.module.get_function("strcpy").unwrap(),
+                    IRFunctionType::new(
+                        IRType::Void,
+                        vec![IRType::Reference(Box::new(IRType::Byte)), IRType::Reference(Box::new(IRType::Byte))],
+                    ),
+                ),
+            )
+            .unwrap();
+
+        self.functions
+            .try_insert(
+                "strcat",
+                (
+                    self.module.get_function("strcat").unwrap(),
+                    IRFunctionType::new(
+                        IRType::Void,
+                        vec![IRType::Reference(Box::new(IRType::Byte)), IRType::Reference(Box::new(IRType::Byte))],
+                    ),
+                ),
+            )
+            .unwrap();
+
         Ok(())
     }
 
-    fn cgen_literal(&mut self, literal: &'ctx Literal) -> IRResult<IntValue<'ctx>>
-    {
+    fn cgen_literal(&mut self, literal: &'ctx Literal) -> IRResult<(IntValue<'ctx>, IRType)> {
         Ok(match literal {
-            Literal::Int(i) => self.int_type.const_int(*i as u64, true),
-            Literal::Byte(b) => self.char_type.const_int(*b as u64, false),
+            Literal::Int(i) => (self.int_type.const_int(*i as u64, true), IRType::Int),
+            Literal::Byte(b) => (self.char_type.const_int(*b as u64, false), IRType::Byte),
         })
     }
 
-    fn cgen_expresion(
-        &mut self,
-        expr: &'ctx ExprAST,
-    ) -> IRResult<(BasicValueEnum<'ctx>, Option<IRType>)>
-    {
+    fn cgen_expresion(&mut self, expr: &'ctx ExprAST) -> IRResult<(BasicValueEnum<'ctx>, IRType)> {
         match expr {
             ExprAST::Error => Err(IRError::UnknownError),
-            ExprAST::Literal(lit) => Ok((self.cgen_literal(lit)?.as_basic_value_enum(), None)),
+
+            ExprAST::Literal(lit) => {
+                let lit = self.cgen_literal(lit)?;
+                Ok((lit.0.as_basic_value_enum(), lit.1))
+            }
+
             ExprAST::InfixOp { lhs, op, rhs } => {
-                let lhs = self.cgen_expresion(lhs)?;
-                let rhs = self.cgen_expresion(rhs)?;
+                let (lhs, lhs_ty) = self.cgen_expresion(lhs)?;
+                let (rhs, rhs_ty) = self.cgen_expresion(rhs)?;
 
-                if !lhs.0.is_int_value() {
-                    return Err(IRError::String(
-                        "Infix operator requires both operands to be integers".to_string(),
-                    ));
-                }
-                if !rhs.0.is_int_value() {
-                    return Err(IRError::String(
-                        "Infix operator requires both operands to be integers".to_string(),
-                    ));
-                }
-                let lhs = lhs.0.into_int_value();
-                let rhs = rhs.0.into_int_value();
+                let lhs = self.cgen_int_value_or_load(lhs, &lhs_ty)?;
+                let rhs = self.cgen_int_value_or_load(rhs, &rhs_ty)?;
 
+                // ? casting ??
                 if lhs.get_type() != rhs.get_type() {
                     return Err(IRError::String(
-                        format!(
-                            "Infix operator {:?} requires both operands to have the same type, got {} and {}",
-                            op, lhs.get_type(), rhs.get_type()
-                        ).to_string()
+                        format!("Infix operator '{}' requires both operands to have the same type, got '{}' and '{}'", op, lhs_ty, rhs_ty)
+                            .to_string(),
                     ));
                 }
-
                 Ok((
                     match op {
-                        InfixOperator::Add => self.builder.build_int_add(lhs, rhs, "addtmp"),
-                        InfixOperator::Sub => self.builder.build_int_sub(lhs, rhs, "subtmp"),
-                        InfixOperator::Mul => self.builder.build_int_mul(lhs, rhs, "multmp"),
-                        InfixOperator::Div => self.builder.build_int_signed_div(lhs, rhs, "divtmp"),
-                        InfixOperator::Mod => self.builder.build_int_signed_rem(lhs, rhs, "modtmp"),
-                        InfixOperator::Equal => {
-                            self.builder
-                                .build_int_compare(IntPredicate::EQ, lhs, rhs, "eqtmp")
+                        // Will differentiate between signed and unsigned operations, and use nuw nsw to give more optimization opportunities
+                        InfixOperator::Add => {
+                            if rhs.get_type() == self.char_type {
+                                self.builder.build_int_nuw_add(lhs, rhs, "addtmp")
+                            } else {
+                                self.builder.build_int_nsw_add(lhs, rhs, "addtmp")
+                            }
                         }
-                        InfixOperator::NotEqual => {
-                            self.builder
-                                .build_int_compare(IntPredicate::NE, lhs, rhs, "neqtmp")
+                        InfixOperator::Sub => {
+                            if rhs.get_type() == self.char_type {
+                                self.builder.build_int_nuw_sub(lhs, rhs, "subtmp")
+                            } else {
+                                self.builder.build_int_nsw_sub(lhs, rhs, "subtmp")
+                            }
                         }
-                        InfixOperator::Greater => {
-                            self.builder
-                                .build_int_compare(IntPredicate::SGT, lhs, rhs, "gttmp")
+                        InfixOperator::Mul => {
+                            if rhs.get_type() == self.char_type {
+                                self.builder.build_int_nuw_mul(lhs, rhs, "multmp")
+                            } else {
+                                self.builder.build_int_nsw_mul(lhs, rhs, "multmp")
+                            }
                         }
-                        InfixOperator::Less => {
-                            self.builder
-                                .build_int_compare(IntPredicate::SLT, lhs, rhs, "lttmp")
+                        InfixOperator::Div => {
+                            if rhs.get_type() == self.char_type {
+                                self.builder.build_int_unsigned_div(lhs, rhs, "divtmp")
+                            } else {
+                                self.builder.build_int_signed_div(lhs, rhs, "divtmp")
+                            }
                         }
-                        InfixOperator::GreaterOrEqual => {
-                            self.builder
-                                .build_int_compare(IntPredicate::SGE, lhs, rhs, "getmp")
+                        InfixOperator::Mod => {
+                            if rhs.get_type() == self.char_type {
+                                self.builder.build_int_unsigned_rem(lhs, rhs, "modtmp")
+                            } else {
+                                self.builder.build_int_signed_rem(lhs, rhs, "modtmp")
+                            }
                         }
-                        InfixOperator::LessOrEqual => {
-                            self.builder
-                                .build_int_compare(IntPredicate::SLE, lhs, rhs, "letmp")
-                        }
+                        InfixOperator::Equal => self.builder.build_int_compare(IntPredicate::EQ, lhs, rhs, "eqtmp"),
+                        InfixOperator::NotEqual => self.builder.build_int_compare(IntPredicate::NE, lhs, rhs, "neqtmp"),
+                        InfixOperator::Greater => self.builder.build_int_compare(IntPredicate::SGT, lhs, rhs, "gttmp"),
+                        InfixOperator::Less => self.builder.build_int_compare(IntPredicate::SLT, lhs, rhs, "lttmp"),
+                        InfixOperator::GreaterOrEqual => self.builder.build_int_compare(IntPredicate::SGE, lhs, rhs, "getmp"),
+                        InfixOperator::LessOrEqual => self.builder.build_int_compare(IntPredicate::SLE, lhs, rhs, "letmp"),
                         InfixOperator::LogicAnd => self.builder.build_and(lhs, rhs, "andtmp"),
                         InfixOperator::LogicOr => self.builder.build_or(lhs, rhs, "ortmp"),
                     }?
                     .as_basic_value_enum(),
-                    None,
+                    lhs_ty, // should be the same as rhs_ty
                 ))
             }
             ExprAST::PrefixOp { op, expr } => {
-                let expr = self.cgen_expresion(expr)?;
-                if !expr.0.is_int_value() {
-                    return Err(IRError::String(
-                        "Prefix operator requires the operand to be an integer".to_string(),
-                    ));
-                }
-                let expr = expr.0.into_int_value();
+                let (expr, expr_ty) = self.cgen_expresion(expr)?;
+
+                let expr = self.cgen_int_value_or_load(expr, &expr_ty)?;
 
                 Ok((
                     match op {
                         PrefixOperator::Plus => expr.as_basic_value_enum(),
-                        PrefixOperator::Minus => self
-                            .builder
-                            .build_int_neg(expr, "negtmp")?
-                            .as_basic_value_enum(),
-                        PrefixOperator::Not => self
-                            .builder
-                            .build_not(expr, "nottmp")?
-                            .as_basic_value_enum(),
+                        PrefixOperator::Minus => {
+                            if expr_ty.is_byte() {
+                                self.builder.build_int_neg(expr, "negtmp")?.as_basic_value_enum()
+                            } else {
+                                self.builder.build_int_neg(expr, "negtmp")?.as_basic_value_enum()
+                            }
+                        }
+                        PrefixOperator::Not => self.builder.build_not(expr, "nottmp")?.as_basic_value_enum(),
                     },
-                    None,
+                    expr_ty,
                 ))
             }
             ExprAST::LValue(lval) => {
-                let (ptr, ty) = self.cgen_lvalue_load(lval)?;
-
-                if matches!(lval, LValueAST::String { .. }) {
-                    Ok((ptr.as_basic_value_enum(), Some(ty)))
-                } else {
-                    Ok((
-                        self.builder.build_load(
-                            self.from_irtype(&ty).into_int_type(),
-                            ptr,
-                            format!("load.{}", ptr.get_name().to_str().expect("")).as_str(),
-                        )?,
-                        Some(ty),
-                    ))
-                }
+                let (ptr, ty) = self.cgen_lvalue_ptr(lval)?;
+                Ok((ptr.as_basic_value_enum(), ty))
             }
 
-            ExprAST::FunctionCall(fn_call) => Ok((
-                self.cgen_fn_call(fn_call)?
-                    .into_int_value()
-                    .as_basic_value_enum(),
-                None,
-            )),
+            ExprAST::FunctionCall(fn_call) => {
+                let (fn_value, fn_type) = self.cgen_fn_call(fn_call)?;
+                if fn_type.is_void() {
+                    Err(IRError::String("Function call does not return a value".to_string()))
+                } else {
+                    Ok((fn_value.try_as_basic_value().unwrap_left(), fn_type))
+                }
+            }
         }
     }
 
-    fn cgen_lvalue_load(&mut self, lval: &'ctx LValueAST)
-        -> IRResult<(PointerValue<'ctx>, IRType)>
-    {
+    fn cgen_lvalue_ptr(&mut self, lval: &'ctx LValueAST) -> IRResult<(PointerValue<'ctx>, IRType)> {
         match lval {
             LValueAST::String(s) => {
-                let str = self
-                    .builder
-                    .build_global_string_ptr(s, "glob.str")?
-                    .as_pointer_value();
+                let str = self.builder.build_global_string_ptr(s, "glob.str")?.as_pointer_value();
 
                 Ok((
                     str,
-                    IRType::Array(Box::new(IRType::Byte), (s.len() + 1) as i32), // !!!! this isn't correct (maybe string type makes sense ?)
+                    IRType::Array(Box::new(IRType::Byte), (s.len() + 1) as i32), // ! this isn't that correct (maybe string type makes sense ?)
                 ))
             }
 
@@ -462,25 +518,18 @@ impl<'ctx> Compiler<'ctx>
 
             LValueAST::ArraySubscript { id, expr } => {
                 let expr_res = self.cgen_expresion(expr)?;
+                // todo: this needs to be converted to int
 
                 if !expr_res.0.is_int_value() {
-                    return Err(IRError::String(
-                        "Array subscript requires an integer index".to_string(),
-                    ));
+                    return Err(IRError::String("Array subscript requires an integer index".to_string()));
                 }
                 let expr_res = expr_res.0.into_int_value();
 
-                let (ptr, ty) = self
-                    .scopes
-                    .get_from_last(*id)
-                    .ok_or(IRError::String(format!("undeclared undeclared '{}'", id)))?;
+                let (ptr, ty) = self.scopes.get_from_last(*id).ok_or(IRError::String(format!("undeclared undeclared '{}'", id)))?;
 
                 // make sure we are subscripting an array
                 if !ty.is_array() {
-                    return Err(IRError::String(format!(
-                        "identifier '{}' is not an array, (expected array found {})",
-                        id, ty
-                    )));
+                    return Err(IRError::String(format!("identifier '{}' is not an array, (expected array found {})", id, ty)));
                 }
                 let iner_type = ty.get_inner_type().unwrap();
 
@@ -489,7 +538,7 @@ impl<'ctx> Compiler<'ctx>
                         self.from_irtype(&ty).into_array_type(), // ? this should be ok for now, we only have 1D arrays
                         ptr,
                         &[self.const_zero, expr_res],
-                        format!("arraysub.{}", id).as_str(),
+                        format!("idx.{}", id).as_str(),
                     )
                 };
 
@@ -498,81 +547,94 @@ impl<'ctx> Compiler<'ctx>
         }
     }
 
-    fn cgen_fn_call(&mut self, fn_call: &'ctx FnCallAST) -> IRResult<AnyValueEnum<'ctx>>
-    {
-        let func = self
-            .module
-            .get_function(fn_call.name)
-            .ok_or(IRError::String(format!(
-                "Function {} not found",
-                fn_call.name
-            )))?;
-
-        let func_params = func.get_params();
-
-        if func.get_params().len() != fn_call.args.len() {
-            return Err(IRError::String(format!(
-                "Function {} expected {} arguments, got {}",
-                fn_call.name,
-                func.get_params().len(),
-                fn_call.args.len()
-            )));
-        }
-
-        let mut args: Vec<BasicMetadataValueEnum> = Vec::with_capacity(func_params.len());
-
-        for (arg, param) in fn_call.args.iter().zip(func_params.iter()) {
-            let (arg, arg_ty) = self.cgen_expresion(arg)?;
-
-            if arg.get_type() != param.get_type() {
-                return Err(IRError::String(format!(
-                    "Cannot pass argument of type '{}' to function '{}', expected '{}'",
-                    self.any_value_enum_to_irtype(arg.into()),
-                    fn_call.name,
-                    self.any_value_enum_to_irtype(param.as_any_value_enum())
-                )));
-            }
-
-            if arg.is_pointer_value() && param.is_int_value() {
-                // Convert int to pointer, for named arguments, lvalue_load will get us their pointer, so it can be used as reference also
-
-                if let Some(ty) = arg_ty {
-                    if ty.is_array() {
-                        return Err(IRError::String(format!(
-                            "Cannot pass pointer of '{}' as argument to function '{}', expected a '{}'",
-                            ty,
-                            fn_call.name,
-                            self.int_type_to_irtype(param.into_int_value())
-                        )));
+    // This function will get a IntValue or load an IntValue from a PointerValue
+    fn cgen_int_value_or_load(&mut self, value: BasicValueEnum<'ctx>, ty: &IRType) -> IRResult<IntValue<'ctx>> {
+        if value.is_int_value() {
+            Ok(value.into_int_value())
+        } else if value.is_pointer_value() {
+            match ty {
+                IRType::Int => Ok(self.builder.build_load(self.int_type, value.into_pointer_value(), "")?.into_int_value()),
+                IRType::Byte => Ok(self.builder.build_load(self.char_type, value.into_pointer_value(), "")?.into_int_value()),
+                IRType::Reference(ref ty) => {
+                    if !(ty.is_int() || ty.is_byte()) {
+                        return Err(IRError::String("Cannot load a non-integral type from a pointer".to_string()));
                     }
+                    // 1. load the pointer
+                    let ptr = self.builder.build_load(self.ptr_type, value.into_pointer_value(), "deref")?;
+                    // 2. load the value from the pointer
+                    self.cgen_int_value_or_load(ptr, ty)
                 }
-
-                let arg_ptr = arg.into_pointer_value();
-
-                let arg_val = self.builder.build_load(
-                    param.get_type(),
-                    arg_ptr,
-                    format!("load.{}", arg_ptr.get_name().to_str().expect("")).as_str(),
-                )?;
-
-                args.push(arg_val.into_int_value().into());
-            } else {
-                args.push(arg.into());
+                _ => Err(IRError::String("Cannot load a non-integral type from a pointer".to_string())),
             }
+        } else {
+            Err(IRError::String("Expected an int or byte".to_string()))
         }
-
-        Ok(self
-            .builder
-            .build_call(
-                func,
-                args.as_slice(),
-                format!("call.{}", func.get_name().to_str().expect("")).as_str(),
-            )?
-            .as_any_value_enum())
     }
 
-    fn cgen_condition(&mut self, cond: &'ctx ConditionAST) -> IRResult<IntValue<'ctx>>
-    {
+    fn cgen_fn_call(&mut self, fn_call: &'ctx FnCallAST) -> IRResult<(CallSiteValue<'ctx>, IRType)> {
+        let (func, func_type) = self.functions.get(fn_call.name).ok_or(IRError::String(format!("Function {} not found", fn_call.name)))?;
+
+        let call_params = &fn_call.args;
+
+        // * Check if the number of arguments match
+        if func_type.params.len() != call_params.len() {
+            return Err(IRError::String(format!(
+                "Function '{}' with type {} expected {} arguments, got {}",
+                fn_call.name,
+                func_type,
+                func_type.params.len(),
+                call_params.len()
+            )));
+        }
+        // * args to be passed to builder
+        let mut args: Vec<BasicMetadataValueEnum> = Vec::with_capacity(call_params.len());
+
+        // * Check if the types of the arguments match
+        for (i, (param_ty, arg)) in func_type.params.iter().zip(call_params.iter()).enumerate() {
+            let (mut arg, mut arg_ty) = self.cgen_expresion(arg)?;
+
+            match &param_ty {
+                // * Handle primitive types
+                IRType::Int | IRType::Byte => {
+                    if param_ty != &arg_ty {
+                        return Err(IRError::String(format!(
+                            "Function '{}' expected argument({}) of type {}, got {}",
+                            fn_call.name, i, param_ty, arg_ty
+                        )));
+                    }
+                    let arg = self.cgen_int_value_or_load(arg, &arg_ty)?;
+                    args.push(arg.into())
+                }
+                // * Hadle references
+                IRType::Reference(_ty) => {
+                    if !arg.is_pointer_value() {
+                        return Err(IRError::String(format!(
+                            "Cannot pass argument of type '{}' which is constant to function '{}', expected a reference - Argument should be an lvalue",
+                            arg_ty, fn_call.name
+                        )));
+                    }
+                    if arg_ty.is_reference() {
+                        arg = self.builder.build_load(self.ptr_type, arg.into_pointer_value(), "deref")?;
+                        arg_ty = arg_ty.get_inner_type().unwrap().clone();
+                    }
+
+                    if param_ty.get_inner_type().unwrap() != &arg_ty {
+                        return Err(IRError::String(format!(
+                            "Function '{}' expected argument({}) of type {}, got {}",
+                            fn_call.name, i, param_ty, arg_ty
+                        )));
+                    }
+                    args.push(arg.into())
+                }
+                _ => unreachable!("not implemented call"), // this should be unreachanble as we don't use pointers IRTypes, and Arrays should be references
+            }
+        }
+
+        let call = self.builder.build_call(func, args.as_slice(), format!("call.{}", func.get_name().to_str().expect("")).as_str())?;
+        Ok((call, func_type.r_type))
+    }
+
+    fn cgen_condition(&mut self, cond: &'ctx ConditionAST) -> IRResult<IntValue<'ctx>> {
         match cond {
             ConditionAST::BoolConst(b) => Ok(self.bool_type.const_int(*b as u64, false)),
 
@@ -581,33 +643,14 @@ impl<'ctx> Compiler<'ctx>
                 let rhs = self.cgen_condition(rhs)?;
 
                 Ok(match op {
-                    InfixOperator::Equal => {
-                        self.builder
-                            .build_int_compare(IntPredicate::EQ, lhs, rhs, "eqtmp")
-                    }
-                    InfixOperator::NotEqual => {
-                        self.builder
-                            .build_int_compare(IntPredicate::NE, lhs, rhs, "neqtmp")
-                    }
-                    InfixOperator::Greater => {
-                        self.builder
-                            .build_int_compare(IntPredicate::SGT, lhs, rhs, "gttmp")
-                    }
-                    InfixOperator::Less => {
-                        self.builder
-                            .build_int_compare(IntPredicate::SLT, lhs, rhs, "lttmp")
-                    }
-                    InfixOperator::GreaterOrEqual => {
-                        self.builder
-                            .build_int_compare(IntPredicate::SGE, lhs, rhs, "getmp")
-                    }
-                    InfixOperator::LessOrEqual => {
-                        self.builder
-                            .build_int_compare(IntPredicate::SLE, lhs, rhs, "letmp")
-                    }
+                    InfixOperator::Equal => self.builder.build_int_compare(IntPredicate::EQ, lhs, rhs, "eqtmp"),
+                    InfixOperator::NotEqual => self.builder.build_int_compare(IntPredicate::NE, lhs, rhs, "neqtmp"),
+                    InfixOperator::Greater => self.builder.build_int_compare(IntPredicate::SGT, lhs, rhs, "gttmp"),
+                    InfixOperator::Less => self.builder.build_int_compare(IntPredicate::SLT, lhs, rhs, "lttmp"),
+                    InfixOperator::GreaterOrEqual => self.builder.build_int_compare(IntPredicate::SGE, lhs, rhs, "getmp"),
+                    InfixOperator::LessOrEqual => self.builder.build_int_compare(IntPredicate::SLE, lhs, rhs, "letmp"),
                     InfixOperator::LogicAnd => self.builder.build_and(lhs, rhs, "andtmp"),
                     InfixOperator::LogicOr => self.builder.build_or(lhs, rhs, "ortmp"),
-
                     _ => panic!("Should not happen"),
                 }?)
             }
@@ -622,57 +665,28 @@ impl<'ctx> Compiler<'ctx>
             }
 
             ConditionAST::ExprComparison { lhs, op, rhs } => {
-                let lhs = self.cgen_expresion(lhs)?;
-                let rhs = self.cgen_expresion(rhs)?;
+                let (lhs, lhs_ty) = self.cgen_expresion(lhs)?;
+                let (rhs, rhs_ty) = self.cgen_expresion(rhs)?;
 
-                if !lhs.0.is_int_value() {
-                    // todo: Could improve this error message
-                    return Err(IRError::String(format!(
-                        "Infix operator requires both operands to be integers"
-                    )));
-                }
-                if !rhs.0.is_int_value() {
-                    return Err(IRError::String(format!(
-                        "Infix operator requires both operands to be integers"
-                    )));
-                }
-                let lhs = lhs.0.into_int_value();
-                let rhs = rhs.0.into_int_value();
+                let mut lhs = self.cgen_int_value_or_load(lhs, &lhs_ty)?;
+                let mut rhs = self.cgen_int_value_or_load(rhs, &rhs_ty)?;
 
-                if lhs.get_type() != rhs.get_type() {
-                    return Err(IRError::String(
-                        format!(
-                            "Infix operator {:?} requires both operands to have the same type, got {} and {}",
-                            op, lhs.get_type(), rhs.get_type()
-                        ).to_string()
-                    ));
+                // Enable char-int comparisons
+                if rhs.get_type() != lhs.get_type() {
+                    if rhs.get_type() == self.char_type {
+                        rhs = self.builder.build_int_z_extend(rhs, self.int_type, "char_to_int")?;
+                    } else {
+                        lhs = self.builder.build_int_z_extend(lhs, self.int_type, "char_to_int")?;
+                    }
                 }
 
                 Ok(match op {
-                    InfixOperator::Equal => {
-                        self.builder
-                            .build_int_compare(IntPredicate::EQ, lhs, rhs, "eqtmp")
-                    }
-                    InfixOperator::NotEqual => {
-                        self.builder
-                            .build_int_compare(IntPredicate::NE, lhs, rhs, "neqtmp")
-                    }
-                    InfixOperator::Greater => {
-                        self.builder
-                            .build_int_compare(IntPredicate::SGT, lhs, rhs, "gttmp")
-                    }
-                    InfixOperator::Less => {
-                        self.builder
-                            .build_int_compare(IntPredicate::SLT, lhs, rhs, "lttmp")
-                    }
-                    InfixOperator::GreaterOrEqual => {
-                        self.builder
-                            .build_int_compare(IntPredicate::SGE, lhs, rhs, "getmp")
-                    }
-                    InfixOperator::LessOrEqual => {
-                        self.builder
-                            .build_int_compare(IntPredicate::SLE, lhs, rhs, "letmp")
-                    }
+                    InfixOperator::Equal => self.builder.build_int_compare(IntPredicate::EQ, lhs, rhs, "eqtmp"),
+                    InfixOperator::NotEqual => self.builder.build_int_compare(IntPredicate::NE, lhs, rhs, "neqtmp"),
+                    InfixOperator::Greater => self.builder.build_int_compare(IntPredicate::SGT, lhs, rhs, "gttmp"),
+                    InfixOperator::Less => self.builder.build_int_compare(IntPredicate::SLT, lhs, rhs, "lttmp"),
+                    InfixOperator::GreaterOrEqual => self.builder.build_int_compare(IntPredicate::SGE, lhs, rhs, "getmp"),
+                    InfixOperator::LessOrEqual => self.builder.build_int_compare(IntPredicate::SLE, lhs, rhs, "letmp"),
                     _ => panic!("Should not happen"),
                 }?)
             }
@@ -681,8 +695,18 @@ impl<'ctx> Compiler<'ctx>
         }
     }
 
-    fn cgen_statement(&mut self, stmt: &'ctx StatementAST) -> IRResult<()>
-    {
+    fn cgen_statments(&mut self, stmts: &'ctx Vec<StatementAST>) -> IRResult<()> {
+        for stmt in stmts {
+            self.cgen_statement(stmt)?;
+            if matches!(stmt, StatementAST::Return(_)) {
+                // ? add a warning if not last statment
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn cgen_statement(&mut self, stmt: &'ctx StatementAST) -> IRResult<()> {
         match stmt {
             StatementAST::Expr(e) => {
                 self.cgen_expresion(e)?;
@@ -690,32 +714,48 @@ impl<'ctx> Compiler<'ctx>
 
             StatementAST::Assignment { lvalue, expr } => {
                 if matches!(lvalue, LValueAST::String(_)) {
-                    return Err(IRError::String(
-                        "Cannot assign to a string constant".to_string(),
-                    ));
+                    return Err(IRError::String("Cannot assign to a string constant".to_string()));
                 }
                 // todo: this neeeds further checking
-                let (lval_ptr, lval_type) = self.cgen_lvalue_load(lvalue)?;
+                let (mut lval_ptr, mut lval_type) = self.cgen_lvalue_ptr(lvalue)?;
+                let (expr, expr_type): (BasicValueEnum<'ctx>, IRType) = self.cgen_expresion(expr)?;
 
-                if !(lval_type.is_int() || lval_type.is_byte()) {
+                if !lval_type.is_primitive() & !lval_type.is_primitive_reference() {
+                    return Err(IRError::String(format!("Cannot assign to a non-integral type {}", lval_type)));
+                }
+
+                if lval_type.is_reference() {
+                    lval_type = lval_type.get_inner_type().unwrap().clone();
+                    match lval_type {
+                        IRType::Int => {
+                            lval_ptr = self.builder.build_load(self.ptr_type, lval_ptr, "deref")?.into_pointer_value();
+                        }
+                        IRType::Byte => {
+                            lval_ptr = self.builder.build_load(self.ptr_type, lval_ptr, "deref")?.into_pointer_value();
+                        }
+                        _ => return Err(IRError::String(format!("Cannot assign to a non-integral type {}", lval_type))),
+                    }
+                }
+
+                //
+                let expr = self.cgen_int_value_or_load(expr, &expr_type)?;
+
+                if expr.get_type() != self.from_irtype(&lval_type).into_int_type() {
                     return Err(IRError::String(format!(
-                        "Cannot assign to a non-integral type {}",
-                        lval_type
+                        "Cannot assign a value of type '{}' to a variable of type '{}'",
+                        expr_type, lval_type
                     )));
                 }
 
-                let expr_res = self.cgen_expresion(expr)?;
-
-                let e = expr_res
-                    .0
-                    .into_int_value()
-                    .const_truncate_or_bit_cast(self.from_irtype(&lval_type).into_int_type());
-
-                self.builder.build_store(lval_ptr, e)?;
+                self.builder.build_store(lval_ptr, expr)?;
             }
 
             StatementAST::FunctionCall(fn_call) => {
-                self.cgen_fn_call(fn_call)?;
+                // todo: check if the function returns void ??
+                let (_, fn_value) = self.cgen_fn_call(fn_call)?;
+                if !fn_value.is_void() {
+                    return Err(IRError::String("Unused return value".to_string()));
+                }
             }
 
             StatementAST::Return(expr) => {
@@ -726,61 +766,58 @@ impl<'ctx> Compiler<'ctx>
                     self.builder.build_return(None)?;
                 }
             }
-
-            StatementAST::If {
-                condition,
-                then,
-                else_,
-            } => {
+            StatementAST::If { condition, then, else_ } => {
+                // todo: chain if else, instead of recurscivly generating the statments to avoid multiple branches
                 let block = self.builder.get_insert_block().unwrap();
                 let current_function = block.get_parent().unwrap();
 
                 let cond = self.cgen_condition(condition)?;
 
-                let if_block = self.context.append_basic_block(current_function, "if.then");
-                let end_block: BasicBlock =
-                    self.context.append_basic_block(current_function, "if.end");
+                let then_block = self.context.append_basic_block(current_function, "if.then");
+                let end_block: BasicBlock = self.context.append_basic_block(current_function, "if.end");
 
-                if let Some(_) = else_ {
-                    let else_block = self.context.append_basic_block(current_function, "if.else");
-                    self.builder
-                        .build_conditional_branch(cond, if_block, else_block)?;
-                    // Build then block
-                    self.builder.position_at_end(if_block);
-                    self.cgen_statement(then)?;
-                    self.builder.build_unconditional_branch(end_block)?;
+                let else_block = match else_ {
+                    Some(_) => Some(self.context.append_basic_block(current_function, "if.else")),
+                    None => None,
+                };
 
-                    // Build else block
-                    self.builder.position_at_end(else_block);
-                    self.cgen_statement(else_.as_ref().unwrap())?;
-                    self.builder.build_unconditional_branch(end_block)?;
-                } else {
-                    self.builder
-                        .build_conditional_branch(cond, if_block, end_block)?;
+                self.builder.build_conditional_branch(cond, then_block, else_block.unwrap_or(end_block))?;
 
-                    // Build then block
-                    self.builder.position_at_end(if_block);
-                    self.cgen_statement(then)?;
+                //* Build then block
+                self.builder.position_at_end(then_block);
+                self.cgen_statement(then)?;
+                if then_block.get_terminator().is_none() {
                     self.builder.build_unconditional_branch(end_block)?;
                 }
 
-                // End block
-                self.builder.position_at_end(end_block);
+                //* */ Build(?) else block
+                if let Some(else_block) = else_block {
+                    self.builder.position_at_end(else_block);
+                    self.cgen_statement(else_.as_ref().unwrap())?;
+                    // build unconditional branch to end block, if no return statement
+                    if else_block.get_terminator().is_none() {
+                        self.builder.build_unconditional_branch(end_block)?;
+                    }
+                }
+
+                //* End block
+                if end_block.get_first_use() == None {
+                    // if both branches return, delete end block
+                    unsafe {
+                        return end_block.delete().map_err(|_| IRError::UnknownError);
+                    };
+                } else {
+                    self.builder.position_at_end(end_block);
+                }
             }
 
             StatementAST::While { condition, body } => {
                 let block = self.builder.get_insert_block().unwrap();
                 let current_function = block.get_parent().unwrap();
 
-                let while_cond = self
-                    .context
-                    .append_basic_block(current_function, "while.cond");
-                let while_body = self
-                    .context
-                    .append_basic_block(current_function, "while.body");
-                let while_end = self
-                    .context
-                    .append_basic_block(current_function, "while.end");
+                let while_cond = self.context.append_basic_block(current_function, "while.cond");
+                let while_body = self.context.append_basic_block(current_function, "while.body");
+                let while_end = self.context.append_basic_block(current_function, "while.end");
 
                 // Build condition block
 
@@ -788,8 +825,7 @@ impl<'ctx> Compiler<'ctx>
                 self.builder.position_at_end(while_cond);
 
                 let cond = self.cgen_condition(condition)?;
-                self.builder
-                    .build_conditional_branch(cond, while_body, while_end)?;
+                self.builder.build_conditional_branch(cond, while_body, while_end)?;
 
                 // Build body block
                 self.builder.position_at_end(while_body);
@@ -802,9 +838,7 @@ impl<'ctx> Compiler<'ctx>
             }
 
             StatementAST::Compound(stmts) => {
-                for stmt in stmts {
-                    self.cgen_statement(stmt)?;
-                }
+                self.cgen_statments(stmts)?;
             }
             StatementAST::Error => return Err(IRError::UnknownError),
             StatementAST::Null => {}
@@ -813,20 +847,16 @@ impl<'ctx> Compiler<'ctx>
         Ok(())
     }
 
-    fn cgen_locals(&mut self, locals: &'ctx Vec<LocalDefinitionAST<'ctx>>) -> IRResult<()>
-    {
+    fn cgen_locals(&mut self, locals: &'ctx Vec<LocalDefinitionAST<'ctx>>) -> IRResult<()> {
         for local in locals {
             // todo: check for duplicates
+            // ? solved with try_insert ?
             match local {
                 LocalDefinitionAST::VarDef { name, type_ } => {
                     let ty = self.get_irtype(type_);
-                    let ptr = self
-                        .builder
-                        .build_alloca(self.from_irtype(&ty).into_int_type(), name)?;
+                    let ptr = self.builder.build_alloca(self.from_irtype(&ty).into_int_type(), name)?;
 
-                    self.scopes
-                        .try_insert(name, (ptr, ty))
-                        .map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
+                    self.scopes.try_insert(name, (ptr, ty)).map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
                 }
                 LocalDefinitionAST::ArrayDef { name, type_, size } => {
                     let ty = self.get_irtype(type_);
@@ -834,28 +864,28 @@ impl<'ctx> Compiler<'ctx>
                     let ir_type = ty.into_array_type(*size);
                     let size = self.int_type.const_int(*size as u64, false);
 
-                    let ptr = self.builder.build_array_alloca(
-                        self.from_irtype(&ty).into_int_type(),
-                        size,
-                        name,
-                    )?;
+                    let ptr = self.builder.build_array_alloca(self.from_irtype(&ty).into_int_type(), size, name)?;
 
-                    self.scopes
-                        .try_insert(name, (ptr, ir_type))
-                        .map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
+                    self.scopes.try_insert(name, (ptr, ir_type)).map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
                 }
                 LocalDefinitionAST::FunctionDef(f) => {
+                    // save current block (aka position)
+                    let current_block = self.builder.get_insert_block().unwrap();
+
                     self.cgen_function(f)?;
+
+                    // restore position
+                    self.builder.position_at_end(current_block);
                 }
             }
         }
         Ok(())
     }
 
-    fn cgen_function(&mut self, func: &'ctx FunctionAST<'ctx>) -> IRResult<FunctionValue<'ctx>>
-    {
+    fn cgen_function(&mut self, func: &'ctx FunctionAST<'ctx>) -> IRResult<FunctionValue<'ctx>> {
         let name = func.name;
 
+        // * Create function protoype
         let return_type = self.type_to_any_type(&func.r_type);
 
         let mut param_types: Vec<BasicMetadataTypeEnum> = Vec::with_capacity(func.params.len());
@@ -863,9 +893,9 @@ impl<'ctx> Compiler<'ctx>
             param_types.push(self.type_to_basic_type(&param.type_).into());
         }
 
-        let func_type = match return_type {
+        let func_type: inkwell::types::FunctionType = match return_type {
             AnyTypeEnum::VoidType(_) => self.proc_type.fn_type(param_types.as_slice(), false),
-            AnyTypeEnum::IntType(_) => self.int_type.fn_type(param_types.as_slice(), false),
+            AnyTypeEnum::IntType(t) => t.fn_type(param_types.as_slice(), false),
             _ => unreachable!(),
         };
 
@@ -875,23 +905,76 @@ impl<'ctx> Compiler<'ctx>
 
         self.builder.position_at_end(block);
 
-        // Create new scope
+        //* Create new scope
         self.scopes.push();
 
-        for (param, arg) in function.get_params().iter().zip(func.params.iter()) {
-            let arg = self.builder.build_alloca(param.get_type(), arg.name);
-            todo!("Add paramaneter to scope");
+        // * Build parameters
+        self.builder.position_at_end(block);
+
+        let mut param_ir_types: Vec<IRType> = Vec::with_capacity(func.params.len());
+
+        for (pos, (param, arg)) in function.get_params().iter().zip(func.params.iter()).enumerate() {
+            param.set_name(arg.name);
+            let ir_type = self.get_irtype(&arg.type_);
+
+            let param_ptr = self.builder.build_alloca(param.get_type(), format!("{}.addr", arg.name).as_str())?;
+
+            self.builder.build_store(param_ptr, param.as_basic_value_enum())?;
+
+            if ir_type.is_array() {
+                return Err(IRError::String(format!("Arrays can only be passed by reference")));
+            }
+
+            // Hint llvm-ir that we have a reference
+            if ir_type.is_reference() {
+                match ir_type.get_inner_type().unwrap() {
+                    IRType::Int => {
+                        function.add_attribute(inkwell::attributes::AttributeLoc::Param(pos as u32), self.int_reference_attribute)
+                    }
+                    IRType::Byte => {
+                        function.add_attribute(inkwell::attributes::AttributeLoc::Param(pos as u32), self.char_reference_attribute)
+                    }
+                    _ => {}
+                };
+            }
+
+            param_ir_types.push(ir_type.clone());
+            self.scopes
+                .try_insert(arg.name, (param_ptr, ir_type))
+                .map_err(|_| IRError::String(format!(" multiple arguments with name of' {}'", arg.name)))?;
         }
+
+        // * Insert function into functions scope
+        self.functions.try_insert(name, (function, IRFunctionType::new(self.get_irtype(&func.r_type), param_ir_types))).ok();
+
+        self.builder.position_at_end(block);
+        // * Generate locals
+        self.functions.push();
         self.cgen_locals(&func.locals)?;
 
-        // Generte function body
-        for stmt in &func.body {
-            self.cgen_statement(stmt)?;
-        }
+        //* Generte function body
+        self.cgen_statments(&func.body)?;
 
+        //* Prepare to leave function
         self.scopes.pop();
-        Ok(function)
+        self.functions.pop();
 
-        // build return
+        //* Check if any module of the CFG returns, and build return for void functions
+        for bb in function.get_basic_blocks() {
+            match bb.get_terminator() {
+                Some(_) => {
+                    continue;
+                }
+                None => {
+                    if return_type.is_void_type() {
+                        self.builder.position_at_end(bb);
+                        self.builder.build_return(None)?;
+                    } else {
+                        return Err(IRError::String(format!("Control flow reaches end of non-void function '{}'", name)));
+                    }
+                }
+            }
+        }
+        Ok(function)
     }
 }
