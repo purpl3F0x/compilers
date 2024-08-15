@@ -7,8 +7,7 @@ use super::Scopes;
 use super::{IRError, IRResult, IRType};
 
 use inkwell::values::CallSiteValue;
-// ? append stdlib as bitcode ? (see here: https://github.com/hyperledger/solang/blob/06798cdeac6fd62ee98f5ae7da38f3af4933dc0f/src/emit/binary.rs#L1299)
-use stdlib::LIBALAN_BITCODE as STDLIB_IR;
+use stdlib::LIBALAN_BITCODE as STDLIB_IR; // append stdlib as bitcode (see here: https://github.com/hyperledger/solang/blob/06798cd/src/emit/binary.rs#L1299)
 
 pub use inkwell::context::Context;
 
@@ -250,131 +249,56 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     /// Load the stdlib into the module, the stdlib symbol table is hardcoded in the stdlib
+    #[rustfmt::skip]
     fn load_stdlib(&mut self) -> IRResult<()> {
-        // todo: add the stdlib functions !!!
         use inkwell::memory_buffer::MemoryBuffer;
+        use std::time::{Duration, Instant};
+
+        let now = Instant::now();
+
         let memory = MemoryBuffer::create_from_memory_range(STDLIB_IR, "main_module");
+        let external_module: Module = Module::parse_bitcode_from_buffer(&memory, self.context)?;
 
-        let external_module = Module::parse_bitcode_from_buffer(&memory, self.context)?;
-
-        // Manually add external declarations to the main module
-        for function in external_module.get_functions() {
-            let funct_name = function.get_name().to_str().unwrap();
-            if self.module.get_function(funct_name).is_none() {
-                let f_val = self.module.add_function(
-                    funct_name,
-                    function.get_type(),
-                    None, // todo: private linkage ?
-                );
-            }
+        macro_rules! register_function {
+            ($name:expr, $func:expr, $ir_type:expr) => {
+                self.functions.try_insert($name, ($func, $ir_type)).unwrap()
+            };
         }
 
-        self.functions
-            .try_insert(
-                "writeInteger",
-                (self.module.get_function("writeInteger").unwrap(), IRFunctionType::new(IRType::Void, vec![IRType::Int])),
-            )
-            .unwrap();
-        self.functions
-            .try_insert(
-                "writeByte",
-                (self.module.get_function("writeByte").unwrap(), IRFunctionType::new(IRType::Void, vec![IRType::Byte])),
-            )
-            .unwrap();
+        for function in external_module.get_functions() {
+            let func_name = function.get_name();
+            let func_ty = function.get_type();
+            let func_name_str = func_name.to_str().unwrap();
 
-        self.functions
-            .try_insert(
-                "writeChar",
-                (self.module.get_function("writeChar").unwrap(), IRFunctionType::new(IRType::Void, vec![IRType::Byte])),
-            )
-            .unwrap();
+            // Check if the function is already in the main module
+            if self.module.get_function(func_name_str).is_none() {
+                let func_value  = self.module.add_function(func_name_str, func_ty, None);
 
-        self.functions
-            .try_insert(
-                "writeString",
-                (
-                    self.module.get_function("writeString").unwrap(),
-                    IRFunctionType::new(IRType::Void, vec![IRType::Reference(Box::new(IRType::Byte))]),
-                ),
-            )
-            .unwrap();
+                // Register standard library functions based on their name
+                match func_name_str {
+                    // I/O functions
+                    "writeInteger" => register_function!("writeInteger", func_value, IRFunctionType::new(IRType::Void, vec![IRType::Int])),
+                    "writeByte" => register_function!("writeByte", func_value, IRFunctionType::new(IRType::Void, vec![IRType::Byte])),
+                    "writeChar" => register_function!("writeChar", func_value, IRFunctionType::new(IRType::Void, vec![IRType::Byte])),
+                    "writeString" => register_function!("writeString", func_value, IRFunctionType::new(IRType::Void, vec![IRType::Reference(Box::new(IRType::Byte))])),
+                    "readInteger" => register_function!("readInteger", func_value, IRFunctionType::new(IRType::Int, vec![])),
+                    "readByte" => register_function!("readByte", func_value, IRFunctionType::new(IRType::Byte, vec![])),
+                    "readChar" => register_function!("readChar", func_value, IRFunctionType::new(IRType::Byte, vec![])),
+                    "readString" => register_function!("readString", func_value, IRFunctionType::new(IRType::Reference(Box::new(IRType::Void)), vec![IRType::Int, IRType::Reference(Box::new(IRType::Byte))])),
+                    // Type conversion functions
+                    "extend" => register_function!("extend", func_value, IRFunctionType::new(IRType::Int, vec![IRType::Byte])),
+                    "shrink" => register_function!("shrink", func_value, IRFunctionType::new(IRType::Byte, vec![IRType::Int])),
+                    // String functions
+                    "strlen" => register_function!("strlen", func_value, IRFunctionType::new(IRType::Int, vec![IRType::Reference(Box::new(IRType::Byte))])),
+                    "strcmp" => register_function!("strcmp", func_value, IRFunctionType::new(IRType::Int, vec![IRType::Reference(Box::new(IRType::Byte)), IRType::Reference(Box::new(IRType::Byte))])),
+                    "strcpy" => register_function!("strcpy", func_value, IRFunctionType::new(IRType::Void, vec![IRType::Reference(Box::new(IRType::Byte)), IRType::Reference(Box::new(IRType::Byte))])),
+                    "strcat" => register_function!("strcat", func_value, IRFunctionType::new(IRType::Void, vec![IRType::Reference(Box::new(IRType::Byte)), IRType::Reference(Box::new(IRType::Byte))])),
 
-        self.functions
-            .try_insert("readInteger", (self.module.get_function("readInteger").unwrap(), IRFunctionType::new(IRType::Int, vec![])))
-            .unwrap();
-        self.functions
-            .try_insert("readByte", (self.module.get_function("readByte").unwrap(), IRFunctionType::new(IRType::Byte, vec![])))
-            .unwrap();
-        self.functions
-            .try_insert("readChar", (self.module.get_function("readChar").unwrap(), IRFunctionType::new(IRType::Byte, vec![])))
-            .unwrap();
-        self.functions
-            .try_insert(
-                "readString",
-                (
-                    self.module.get_function("readString").unwrap(),
-                    IRFunctionType::new(
-                        IRType::Reference(Box::new(IRType::Void)),
-                        vec![IRType::Int, IRType::Reference(Box::new(IRType::Byte))],
-                    ),
-                ),
-            )
-            .unwrap();
-        self.functions
-            .try_insert("extend", (self.module.get_function("extend").unwrap(), IRFunctionType::new(IRType::Int, vec![IRType::Byte])))
-            .unwrap();
-        self.functions
-            .try_insert("shrink", (self.module.get_function("shrink").unwrap(), IRFunctionType::new(IRType::Byte, vec![IRType::Int])))
-            .unwrap();
-
-        self.functions
-            .try_insert(
-                "strlen",
-                (
-                    self.module.get_function("strlen").unwrap(),
-                    IRFunctionType::new(IRType::Int, vec![IRType::Reference(Box::new(IRType::Byte))]),
-                ),
-            )
-            .unwrap();
-
-        self.functions
-            .try_insert(
-                "strcmp",
-                (
-                    self.module.get_function("strcmp").unwrap(),
-                    IRFunctionType::new(
-                        IRType::Int,
-                        vec![IRType::Reference(Box::new(IRType::Byte)), IRType::Reference(Box::new(IRType::Byte))],
-                    ),
-                ),
-            )
-            .unwrap();
-
-        self.functions
-            .try_insert(
-                "strcpy",
-                (
-                    self.module.get_function("strcpy").unwrap(),
-                    IRFunctionType::new(
-                        IRType::Void,
-                        vec![IRType::Reference(Box::new(IRType::Byte)), IRType::Reference(Box::new(IRType::Byte))],
-                    ),
-                ),
-            )
-            .unwrap();
-
-        self.functions
-            .try_insert(
-                "strcat",
-                (
-                    self.module.get_function("strcat").unwrap(),
-                    IRFunctionType::new(
-                        IRType::Void,
-                        vec![IRType::Reference(Box::new(IRType::Byte)), IRType::Reference(Box::new(IRType::Byte))],
-                    ),
-                ),
-            )
-            .unwrap();
+                    _ => {return Err(IRError::String(format!("Unknown function in stdlib: {}", func_name_str)))}
+                }
+            }
+        }
+        println!("time: {}", now.elapsed().as_nanos());
 
         Ok(())
     }
