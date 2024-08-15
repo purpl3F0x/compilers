@@ -252,9 +252,6 @@ impl<'ctx> Compiler<'ctx> {
     #[rustfmt::skip]
     fn load_stdlib(&mut self) -> IRResult<()> {
         use inkwell::memory_buffer::MemoryBuffer;
-        use std::time::{Duration, Instant};
-
-        let now = Instant::now();
 
         let memory = MemoryBuffer::create_from_memory_range(STDLIB_IR, "main_module");
         let external_module: Module = Module::parse_bitcode_from_buffer(&memory, self.context)?;
@@ -298,7 +295,6 @@ impl<'ctx> Compiler<'ctx> {
                 }
             }
         }
-        println!("time: {}", now.elapsed().as_nanos());
 
         Ok(())
     }
@@ -678,7 +674,7 @@ impl<'ctx> Compiler<'ctx> {
                 // todo: check if the function returns void ??
                 let (_, fn_value) = self.cgen_fn_call(fn_call)?;
                 if !fn_value.is_void() {
-                    return Err(IRError::String("Unused return value".to_string()));
+                    return Err(IRError::String(format!("Unused return value, when calling '{}' - that returns a {}", fn_call.name, fn_value)));
                 }
             }
 
