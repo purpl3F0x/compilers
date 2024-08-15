@@ -1,6 +1,6 @@
 [package]
 name = "alanc"
-authors = ["Stavros Avramidis <stavros9899@gmail.com>"]
+authors = ["Stavros Avramidis <stavros9899@gmail.com><el17811@mail.ntua.gr>"]
 version = "0.1.0"
 edition = "2021"
 description = "Compiler of the Alan programming language, developed for the 8th semester's Compilers course at NTUA."
@@ -11,7 +11,7 @@ alan = { path = "../alan" }
 clap = { version = "4.5.9", features = ["derive", "string"] }
 concolor = { version = "0.1.1", features = ["auto"] }
 shadow-rs = "0.30.0"
-yansi = "1.0.1"
+yansi = {version = "1.0.1", features = ["detect-env"]}
 
 
 [build-dependencies]

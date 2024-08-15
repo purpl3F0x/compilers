@@ -4,33 +4,43 @@ use clap::{
     builder::styling::{AnsiColor as Ansi, Styles},
     ArgGroup,
 };
-
 use shadow_rs::shadow;
 use std::ffi::OsStr;
 use std::path::PathBuf;
+use yansi::Paint;
 
 shadow!(build);
 
-fn my_long_version() -> String
-{
+fn my_dragon() -> String {
+    format!(
+        "{}\n{}\n{}{}\n{}{}\n{}{}\n",
+        r"                     \`-\`-._".green(),
+        r"                         \` )`. `-.__      ,".green(),
+        r"      '' , . _       ".red(),
+        r"_,-._;'_,-`__,-'    ,/".green(),
+        r"     : `. ` , _' :- ".red(),
+        "'--'._ ' `------._,-;'".green(),
+        r"      `- ,`- '            ".red(),
+        r"`--..__,,---' ".green()
+    )
+}
+
+fn my_long_version() -> String {
     use build::*;
 
     format!(
-        r#"{}
-branch: {}
-commit_hash: {}
-build_time: {}
-build_env: {} - {}
-LLVM Version:{}
-host-os:{}"#,
-        PKG_VERSION,
-        BRANCH,
-        SHORT_COMMIT,
-        BUILD_TIME,
-        RUST_VERSION,
-        RUST_CHANNEL,
-        alan::codegen::Compiler::llvm_version(),
-        alan::codegen::Compiler::system_triple()
+        "{}\n\n{}\nAuthor: {}\n\n{}\n\nbranch: {}\ncommit_hash: {}\nbuild_time: {}\nbuild_env: {} - {}\nhost-os: {}\nLLVM Version:  {}",
+        PKG_VERSION.magenta(),
+        env!("CARGO_PKG_DESCRIPTION"),
+        env!("CARGO_PKG_AUTHORS").yellow(),
+        my_dragon(),
+        BRANCH.blue(),
+        SHORT_COMMIT.blue(),
+        BUILD_TIME.blue(),
+        RUST_VERSION.blue(),
+        RUST_CHANNEL.blue(),
+        alan::codegen::Compiler::system_triple().blue(),
+        alan::codegen::Compiler::llvm_version().blue(),
     )
 }
 
@@ -63,8 +73,7 @@ const MY_AWESOME_STYLE: Styles = Styles::styled()
 {all-args}{after-help}\n
 ",
 )]
-pub struct Args
-{
+pub struct Args {
     /// Input file
     #[arg(value_name="SOURCE_FILE", value_parser = valid_input_file)]
     pub src_file: Option<PathBuf>,
@@ -90,8 +99,7 @@ pub struct Args
     pub version: Option<bool>,
 }
 
-fn valid_input_file(s: &str) -> Result<PathBuf, String>
-{
+fn valid_input_file(s: &str) -> Result<PathBuf, String> {
     let s = PathBuf::from(s);
     if s.exists() {
         let extension = s.extension();
@@ -99,7 +107,8 @@ fn valid_input_file(s: &str) -> Result<PathBuf, String>
         if extension == Some(OsStr::new("imm")) || extension == Some(OsStr::new("asm")) {
             return Err(format!(
                 "File {:?} is not a valid input file,as extension {:?} conflicts with output file and will be overwritten",
-                s, extension.unwrap()
+                s,
+                extension.unwrap()
             ));
         }
         return Ok(s);
@@ -108,17 +117,14 @@ fn valid_input_file(s: &str) -> Result<PathBuf, String>
     }
 }
 
-pub enum FileMode
-{
+pub enum FileMode {
     File,
     Stdio,
     StdioIntermediate,
 }
 
-impl Args
-{
-    pub fn mode(&self) -> FileMode
-    {
+impl Args {
+    pub fn mode(&self) -> FileMode {
         if Self::parse().stdio {
             return FileMode::Stdio;
         } else if Self::parse().stdio_intermediate {

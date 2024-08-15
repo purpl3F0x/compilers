@@ -11,19 +11,11 @@ use std::process::exit;
 #[allow(unused_variables)]
 use std::io::{stdin, Error as ioError, Read};
 
-fn handle_io_error(err: ioError, what: Option<&str>) -> !
-{
-    use concolor;
+fn handle_io_error(err: ioError, what: Option<&str>) -> ! {
     use yansi::Paint;
-
-    if concolor::get(concolor::Stream::Stderr).color() {
-        eprint!("{} {}", "error:".red().bold(), err);
-    } else {
-        eprintln!("error: {}", err);
-    }
-
+    eprint!("{} {}", "error:".red().bold(), err);
     if let Some(what) = what {
-        eprintln!("{}: {}", ", when attempting to access: ", what.bold());
+        eprint!("{}: {}", ", when attempting to access: ", what.bold());
     } else {
         eprintln!();
     }
@@ -31,8 +23,7 @@ fn handle_io_error(err: ioError, what: Option<&str>) -> !
     exit(err.raw_os_error().unwrap_or(1));
 }
 
-fn main()
-{
+fn main() {
     let args = Args::parse();
 
     let mut src_buffer = String::new();
@@ -63,18 +54,14 @@ fn main()
         asm_file_name = asm_file_path.display().to_string();
     } else if args.stdio {
         println!("Reading from stdin and writing to stdout");
-        stdin()
-            .read_to_string(&mut src_buffer)
-            .unwrap_or_else(|err| {
-                handle_io_error(err, Some("stdin"));
-            });
+        stdin().read_to_string(&mut src_buffer).unwrap_or_else(|err| {
+            handle_io_error(err, Some("stdin"));
+        });
     } else if args.stdio_intermediate {
         println!("Reading from stdin and writing intermediate code to stdout");
-        stdin()
-            .read_to_string(&mut src_buffer)
-            .unwrap_or_else(|err| {
-                handle_io_error(err, Some("stdin"));
-            });
+        stdin().read_to_string(&mut src_buffer).unwrap_or_else(|err| {
+            handle_io_error(err, Some("stdin"));
+        });
     } else {
         unreachable!();
     }
