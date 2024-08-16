@@ -1,7 +1,8 @@
 
-# Alan Compiler
+# Alan Compiler [![build](https://github.com/purpl3F0x/compilers/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/purpl3F0x/compilers/actions/workflows/rust.yml)
 
-Semester project fot 2024 Comilers' class.
+Semester project for 2024 Comilers' class.
+
 ### Author
 
 - [Stavros Avramidis](https://www.github.com/purpl3F0x)
