@@ -138,6 +138,7 @@ impl<'ctx> Compiler<'ctx> {
         self.builder.position_at_end(basic_block);
 
         self.scopes.push();
+        self.functions.push();
 
         self.cgen_locals(&program.locals)?;
         self.builder.position_at_end(basic_block);
@@ -261,6 +262,8 @@ impl<'ctx> Compiler<'ctx> {
                 self.functions.try_insert($name, ($func, $ir_type)).unwrap()
             };
         }
+        // ? Automate this ?
+        // ? compile stdlib statically ?
 
         for function in external_module.get_functions() {
             let func_name = function.get_name();
@@ -277,19 +280,19 @@ impl<'ctx> Compiler<'ctx> {
                     "writeInteger" => register_function!("writeInteger", func_value, IRFunctionType::new(IRType::Void, vec![IRType::Int])),
                     "writeByte" => register_function!("writeByte", func_value, IRFunctionType::new(IRType::Void, vec![IRType::Byte])),
                     "writeChar" => register_function!("writeChar", func_value, IRFunctionType::new(IRType::Void, vec![IRType::Byte])),
-                    "writeString" => register_function!("writeString", func_value, IRFunctionType::new(IRType::Void, vec![IRType::Reference(Box::new(IRType::Byte))])),
+                    "writeString" => register_function!("writeString", func_value, IRFunctionType::new(IRType::Void, vec![IRType::Reference(Box::new(IRType::Array(Box::new(IRType::Byte), -1)))])),
                     "readInteger" => register_function!("readInteger", func_value, IRFunctionType::new(IRType::Int, vec![])),
                     "readByte" => register_function!("readByte", func_value, IRFunctionType::new(IRType::Byte, vec![])),
                     "readChar" => register_function!("readChar", func_value, IRFunctionType::new(IRType::Byte, vec![])),
-                    "readString" => register_function!("readString", func_value, IRFunctionType::new(IRType::Reference(Box::new(IRType::Void)), vec![IRType::Int, IRType::Reference(Box::new(IRType::Byte))])),
+                    "readString" => register_function!("readString", func_value, IRFunctionType::new(IRType::Reference(Box::new(IRType::Void)), vec![IRType::Reference(Box::new(IRType::Array(Box::new(IRType::Byte), -1)))])),
                     // Type conversion functions
                     "extend" => register_function!("extend", func_value, IRFunctionType::new(IRType::Int, vec![IRType::Byte])),
                     "shrink" => register_function!("shrink", func_value, IRFunctionType::new(IRType::Byte, vec![IRType::Int])),
                     // String functions
-                    "strlen" => register_function!("strlen", func_value, IRFunctionType::new(IRType::Int, vec![IRType::Reference(Box::new(IRType::Byte))])),
-                    "strcmp" => register_function!("strcmp", func_value, IRFunctionType::new(IRType::Int, vec![IRType::Reference(Box::new(IRType::Byte)), IRType::Reference(Box::new(IRType::Byte))])),
-                    "strcpy" => register_function!("strcpy", func_value, IRFunctionType::new(IRType::Void, vec![IRType::Reference(Box::new(IRType::Byte)), IRType::Reference(Box::new(IRType::Byte))])),
-                    "strcat" => register_function!("strcat", func_value, IRFunctionType::new(IRType::Void, vec![IRType::Reference(Box::new(IRType::Byte)), IRType::Reference(Box::new(IRType::Byte))])),
+                    "strlen" => register_function!("strlen", func_value, IRFunctionType::new(IRType::Int, vec![IRType::Reference(Box::new(IRType::Array(Box::new(IRType::Byte), -1)))])),
+                    "strcmp" => register_function!("strcmp", func_value, IRFunctionType::new(IRType::Int, vec![IRType::Reference(Box::new(IRType::Array(Box::new(IRType::Byte), -1))), IRType::Reference(Box::new(IRType::Array(Box::new(IRType::Byte), -1)))])),
+                    "strcpy" => register_function!("strcpy", func_value, IRFunctionType::new(IRType::Void, vec![IRType::Reference(Box::new(IRType::Array(Box::new(IRType::Byte), -1))), IRType::Reference(Box::new(IRType::Array(Box::new(IRType::Byte), -1)))])),
+                    "strcat" => register_function!("strcat", func_value, IRFunctionType::new(IRType::Void, vec![IRType::Reference(Box::new(IRType::Array(Box::new(IRType::Byte), -1))), IRType::Reference(Box::new(IRType::Array(Box::new(IRType::Byte), -1)))])),
 
                     _ => {return Err(IRError::String(format!("Unknown function in stdlib: {}", func_name_str)))}
                 }
@@ -674,7 +677,10 @@ impl<'ctx> Compiler<'ctx> {
                 // todo: check if the function returns void ??
                 let (_, fn_value) = self.cgen_fn_call(fn_call)?;
                 if !fn_value.is_void() {
-                    return Err(IRError::String(format!("Unused return value, when calling '{}' - that returns a {}", fn_call.name, fn_value)));
+                    return Err(IRError::String(format!(
+                        "Unused return value, when calling '{}' - that returns a {}",
+                        fn_call.name, fn_value
+                    )));
                 }
             }
 
