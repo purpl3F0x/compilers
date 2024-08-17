@@ -182,7 +182,7 @@ impl<'ctx> Compiler<'ctx> {
                 // todo: this needs checking
                 //todo: also we know the size of the arrays
                 // todo!("arrays are not implemented yet")
-                self.get_irtype(&ty).into_array_type(-1)
+                self.get_irtype(&ty).into_array_type(0)
             }
             Type::Ref(ty) => self.get_irtype(&ty).into_reference_type(),
         }
@@ -195,10 +195,14 @@ impl<'ctx> Compiler<'ctx> {
             IRType::Void => self.proc_type.into(),
             IRType::Array(ty, size) => {
                 let inner = self.from_irtype(ty);
-                match inner {
-                    AnyTypeEnum::IntType(t) => t.array_type(*size as u32).into(),
-                    AnyTypeEnum::PointerType(t) => t.array_type(*size as u32).into(),
-                    _ => todo!(),
+                if *size <= 0 {
+                    self.from_irtype(ty)
+                } else {
+                    match inner {
+                        AnyTypeEnum::IntType(t) => t.array_type(*size as u32).into(),
+                        AnyTypeEnum::PointerType(t) => t.array_type(*size as u32).into(),
+                        _ => todo!(),
+                    }
                 }
             }
             IRType::Pointer(ty) => self.from_irtype(ty),
@@ -440,29 +444,42 @@ impl<'ctx> Compiler<'ctx> {
             }
 
             LValueAST::ArraySubscript { id, expr } => {
-                let expr_res = self.cgen_expresion(expr)?;
+                let (expr_res, expr_ty) = self.cgen_expresion(expr)?;
                 // todo: this needs to be converted to int
 
-                if !expr_res.0.is_int_value() {
-                    return Err(IRError::String("Array subscript requires an integer index".to_string()));
-                }
-                let expr_res = expr_res.0.into_int_value();
+                let expr_res = self.cgen_int_value_or_load(expr_res, &expr_ty)?;
 
-                let (ptr, ty) = self.scopes.get_from_last(*id).ok_or(IRError::String(format!("undeclared undeclared '{}'", id)))?;
+                let (mut ptr, mut ty) = self.scopes.get_from_last(*id).ok_or(IRError::String(format!("undeclared undeclared '{}'", id)))?;
 
                 // make sure we are subscripting an array
                 if !ty.is_array() {
-                    return Err(IRError::String(format!("identifier '{}' is not an array, (expected array found {})", id, ty)));
+                    // no? maybe it's an array reference
+                    if ty.is_reference() {
+                        ty = ty.get_inner_type().unwrap().clone();
+                        if !ty.is_array() {
+                            return Err(IRError::String(format!("identifier '{}' is not an array, (expected array found {})", id, ty)));
+                        }
+                        // we must load the reference
+                        ptr = self.builder.build_load(self.ptr_type, ptr, format!("deref.{}", id).as_str())?.into_pointer_value();
+                    } else {
+                        return Err(IRError::String(format!("identifier '{}' is not an array, (expected array found {})", id, ty)));
+                    }
                 }
-                let iner_type = ty.get_inner_type().unwrap();
+                let iner_type: &IRType = ty.get_inner_type().unwrap();
+                let pointer_ty = self.from_irtype(&ty);
 
-                let element_pointer = unsafe {
-                    self.builder.build_in_bounds_gep(
-                        self.from_irtype(&ty).into_array_type(), // ? this should be ok for now, we only have 1D arrays
-                        ptr,
-                        &[self.const_zero, expr_res],
-                        format!("idx.{}", id).as_str(),
-                    )
+                let element_pointer = match pointer_ty {
+                    AnyTypeEnum::IntType(t) => unsafe {
+                        self.builder.build_in_bounds_gep(t, ptr, &[expr_res], format!("idx.{}", id).as_str())
+                    },
+                    AnyTypeEnum::ArrayType(t) => unsafe {
+                        self.builder.build_in_bounds_gep(t, ptr, &[expr_res], format!("idx.{}", id).as_str())
+                    },
+                    // ? this should be ok for now, we only have 1D arrays
+                    // AnyTypeEnum::PointerType(t) => unsafe {
+                    //     self.builder.build_in_bounds_gep(t, ptr, &[expr_res], format!("idx.{}", id).as_str())
+                    // },
+                    _ => unreachable!(),
                 };
 
                 Ok((element_pointer?, iner_type.clone()))
