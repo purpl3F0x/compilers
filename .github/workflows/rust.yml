@@ -2,15 +2,16 @@ on: [push, pull_request]
 
 name: build
 
+env:
+  CARGO_TERM_COLOR: always
+  LLVM_SYS_180_PREFIX: ${{ github.workspace }}/llvm
+
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set LLVM_SYS_180_PREFIX
-        run: echo "LLVM_SYS_180_PREFIX=${GITHUB_WORKSPACE}/llvm" >> $GITHUB_ENV
-
+      
       - name: Install latest nightly
         uses: actions-rs/toolchain@v1
         with:
