@@ -6,31 +6,30 @@ use super::symbol_table_entries::{FunctionEntry, LValueEntry};
 use super::IntType as AlanIntType;
 use super::{IRError, IRResult, IRType};
 
-use inkwell::values::CallSiteValue;
 use stdlib::LIBALAN_BITCODE as STDLIB_IR; // append stdlib as bitcode (see here: https://github.com/hyperledger/solang/blob/06798cd/src/emit/binary.rs#L1299)
 
 pub use inkwell::context::Context;
 
-use inkwell::types::AnyTypeEnum;
-use inkwell::values::BasicMetadataValueEnum;
 use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
     module::{Linkage, Module},
     passes::PassBuilderOptions,
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine},
-    types::{BasicMetadataTypeEnum, BasicTypeEnum, IntType, PointerType, VoidType},
-    values::{BasicValue, BasicValueEnum, FunctionValue, IntValue},
+    types::{AnyTypeEnum, BasicMetadataTypeEnum, BasicTypeEnum, IntType, PointerType, VoidType},
+    values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, CallSiteValue, FunctionValue, IntValue},
     AddressSpace, IntPredicate,
 };
 
+/// Compiler module, responsible for generating LLVM IR from the AST.
+/// Semantic analysis is done along the way, so the IR generation is simpler.
 pub struct Compiler<'ctx> {
     // LLVM
     context: &'ctx Context,
     builder: Builder<'ctx>,
     module: Module<'ctx>,
 
-    // Bookeeping
+    // Symbol Tables
     lvalue_symbol_table: Scopes<&'ctx str, LValueEntry<'ctx>>,
     function_symbol_table: Scopes<&'ctx str, FunctionEntry<'ctx>>,
 
@@ -42,6 +41,7 @@ pub struct Compiler<'ctx> {
     ptr_type: PointerType<'ctx>,
     const_zero: IntValue<'ctx>,
 
+    // ready to use llvm attributes
     int_reference_attribute: inkwell::attributes::Attribute,
     char_reference_attribute: inkwell::attributes::Attribute,
 }
