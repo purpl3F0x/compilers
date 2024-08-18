@@ -3,7 +3,7 @@ on: [push, pull_request]
 name: build
 
 jobs:
-  check:
+  build:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +25,7 @@ jobs:
             C:/Program Files/LLVM
             ./llvm
           key: llvm-18
-      
+
       - name: Cache Cargo registry
         id: cache-cargo
         uses: actions/cache@v4
@@ -43,13 +43,12 @@ jobs:
         with:
           version: "18"
           cached: ${{ steps.cache-llvm.outputs.cache-hit }}
-          
+
       - name: Install libncurses5
         if: runner.os == 'Linux'
         run: sudo apt update && sudo apt install -y libncurses5
       - name: llvm-config
         run: llvm-config --version --bindir --libdir
-
 
       # `cargo check` command here will use installed `nightly`
       # as it is set as an "override" for current directory
@@ -63,13 +62,13 @@ jobs:
         with:
           command: test
           args: --all
-      
+
       - name: Build
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release --all-features
-      
+
       - name: Archive binary
         uses: actions/upload-artifact@v4
         with:
