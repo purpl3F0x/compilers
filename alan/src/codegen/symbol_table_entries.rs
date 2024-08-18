@@ -22,7 +22,7 @@ pub struct FunctionEntry<'ctx> {
     pub function: FunctionValue<'ctx>,
     pub return_ty: IRType,
     pub param_tys: Vec<IRType>,
-    pub captures: HashMap<&'ctx str, IRType>,
+    pub captures: Option<HashMap<&'ctx str, IRType>>,
     // pub span: Span,
 }
 
@@ -33,14 +33,47 @@ impl<'ctx> FunctionEntry<'ctx> {
         param_tys: Vec<IRType>,
         captures: HashMap<&'ctx str, IRType>,
     ) -> FunctionEntry<'ctx> {
-        FunctionEntry { function, return_ty, param_tys, captures }
+        FunctionEntry { function, return_ty, param_tys, captures: Some(captures) }
     }
 
     pub fn new_extern(function: FunctionValue<'ctx>, return_ty: IRType, param_tys: Vec<IRType>) -> FunctionEntry<'ctx> {
-        FunctionEntry { function, return_ty, param_tys, captures: HashMap::new() }
+        FunctionEntry { function, return_ty, param_tys, captures: None }
     }
 
     pub fn total_num_params(&self) -> usize {
-        self.param_tys.len() + self.captures.len()
+        if let Some(captures) = &self.captures {
+            self.param_tys.len() + captures.len()
+        } else {
+            self.param_tys.len()
+        }
+    }
+
+    pub fn signature_string(&self) -> String {
+        let mut s = String::new();
+        s.push_str("(");
+        for (i, param_ty) in self.param_tys.iter().enumerate() {
+            if i != 0 {
+                s.push_str(", ");
+            }
+            s.push_str(&param_ty.get_name());
+        }
+        s.push_str("):");
+        s.push_str(&self.return_ty.get_name());
+
+        s
+    }
+}
+
+impl<'ctx> std::fmt::Display for FunctionEntry<'ctx> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "(")?;
+
+        for (i, param) in self.param_tys.iter().enumerate() {
+            if i != 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", param)?;
+        }
+        write!(f, "): {}", self.return_ty)
     }
 }

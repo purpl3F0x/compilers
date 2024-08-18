@@ -28,37 +28,59 @@ impl IRType {
     }
 
     #[inline]
-    pub fn is_byte(&self) -> bool { matches!(self, Self::Byte) }
+    pub fn is_byte(&self) -> bool {
+        matches!(self, Self::Byte)
+    }
 
     #[inline]
-    pub fn is_int(&self) -> bool { matches!(self, Self::Int) }
+    pub fn is_int(&self) -> bool {
+        matches!(self, Self::Int)
+    }
 
     #[inline]
-    pub fn is_void(&self) -> bool { matches!(self, Self::Void) }
+    pub fn is_void(&self) -> bool {
+        matches!(self, Self::Void)
+    }
 
     #[inline]
-    pub fn is_array(&self) -> bool { matches!(self, Self::Array(_, _)) }
+    pub fn is_array(&self) -> bool {
+        matches!(self, Self::Array(_, _))
+    }
 
     #[inline]
-    pub fn is_reference(&self) -> bool { matches!(self, Self::Reference(_)) }
+    pub fn is_reference(&self) -> bool {
+        matches!(self, Self::Reference(_))
+    }
 
     #[inline]
-    pub fn is_primitive_reference(&self) -> bool { matches!(self, Self::Reference(t) if t.is_byte() || t.is_int()) }
+    pub fn is_primitive_reference(&self) -> bool {
+        matches!(self, Self::Reference(t) if t.is_byte() || t.is_int())
+    }
 
     #[inline]
-    pub fn is_primitive(&self) -> bool { self.is_byte() || self.is_int() }
+    pub fn is_primitive(&self) -> bool {
+        self.is_byte() || self.is_int()
+    }
 
     #[inline]
-    pub fn is_pointer(&self) -> bool { matches!(self, Self::Pointer(_)) }
+    pub fn is_pointer(&self) -> bool {
+        matches!(self, Self::Pointer(_))
+    }
 
     #[inline]
-    pub fn into_array_type(&self, size: i32) -> Self { Self::Array(Box::new(self.clone()), size) }
+    pub fn into_array_type(&self, size: i32) -> Self {
+        Self::Array(Box::new(self.clone()), size)
+    }
 
     #[inline]
-    pub fn into_reference_type(&self) -> Self { Self::Reference(Box::new(self.clone())) }
+    pub fn into_reference_type(&self) -> Self {
+        Self::Reference(Box::new(self.clone()))
+    }
 
     #[inline]
-    pub fn into_pointer_type(&self) -> Self { Self::Pointer(Box::new(self.clone())) }
+    pub fn into_pointer_type(&self) -> Self {
+        Self::Pointer(Box::new(self.clone()))
+    }
 
     #[inline]
     pub fn get_inner_type(&self) -> Option<&Self> {
@@ -91,34 +113,12 @@ impl PartialEq for IRType {
 }
 
 impl std::fmt::Display for IRType {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result { write!(f, "{}", self.get_name()) }
-}
-
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct IRFunctionType {
-    pub r_type: IRType,
-    pub params: Vec<IRType>,
-}
-
-impl IRFunctionType {
-    pub fn new(r_type: IRType, params: Vec<IRType>) -> Self { Self { r_type, params } }
-}
-
-impl std::fmt::Display for IRFunctionType {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "(")?;
-
-        for (i, param) in self.params.iter().enumerate() {
-            if i != 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{}", param)?;
-        }
-        write!(f, "): {}", self.r_type)
+        write!(f, "{}", self.get_name())
     }
 }
 
-///
+//
 // tests //
 //
 #[cfg(test)]
