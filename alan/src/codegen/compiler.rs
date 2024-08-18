@@ -30,11 +30,9 @@ pub struct Compiler<'ctx> {
     builder: Builder<'ctx>,
     module: Module<'ctx>,
 
-    // For Bookeeping
-    // todo: use ID instead of name
-    // hash map of the addresses of variabels and their underlying types
-    scopes: Scopes<&'ctx str, LValueEntry<'ctx>>,
-    functions: Scopes<&'ctx str, FunctionEntry<'ctx>>,
+    // Bookeeping
+    lvalue_symbol_table: Scopes<&'ctx str, LValueEntry<'ctx>>,
+    function_symbol_table: Scopes<&'ctx str, FunctionEntry<'ctx>>,
 
     // Types
     int_type: IntType<'ctx>,
@@ -87,8 +85,8 @@ impl<'ctx> Compiler<'ctx> {
             builder: builder,
             module: module,
 
-            scopes: Scopes::new(),
-            functions: Scopes::new(),
+            lvalue_symbol_table: Scopes::new(),
+            function_symbol_table: Scopes::new(),
 
             int_type: int_type,
             char_type: char_type,
@@ -135,7 +133,7 @@ impl<'ctx> Compiler<'ctx> {
     pub fn compile(&mut self, program: &'ctx FunctionAST) -> IRResult<()> {
         // ? Enchancment, allow main to have signature of (int argc, char[] argv) ?
 
-        self.functions.push();
+        self.function_symbol_table.push();
         self.load_stdlib()?;
 
         // Manually add the main function, to make sure ia has name of main
@@ -146,8 +144,8 @@ impl<'ctx> Compiler<'ctx> {
 
         self.builder.position_at_end(basic_block);
 
-        self.scopes.push();
-        self.functions.push();
+        self.lvalue_symbol_table.push();
+        self.function_symbol_table.push();
 
         self.cgen_locals(&program.locals)?;
         self.builder.position_at_end(basic_block);
@@ -274,7 +272,7 @@ impl<'ctx> Compiler<'ctx> {
 
         macro_rules! register_function {
             ($name:expr, $func:expr, $ret_type:expr, $signature:expr) => {
-                self.functions.try_insert($name, FunctionEntry::new_extern($func, $ret_type, $signature)).unwrap()
+                self.function_symbol_table.try_insert($name, FunctionEntry::new_extern($func, $ret_type, $signature)).unwrap()
             };
         }
         // ? Automate this ?
@@ -447,7 +445,7 @@ impl<'ctx> Compiler<'ctx> {
 
             LValueAST::Identifier(id) => {
                 let name: &str = id.borrow();
-                if let Some(ptr) = self.scopes.get_from_last(name) {
+                if let Some(ptr) = self.lvalue_symbol_table.get_from_last(name) {
                     Ok(ptr.clone())
                 } else {
                     Err(IRError::String(format!("undeclared undeclared '{}'", name)))
@@ -461,7 +459,7 @@ impl<'ctx> Compiler<'ctx> {
                 let expr_res = self.cgen_int_value_or_load(expr_res, &expr_ty)?;
 
                 let LValueEntry { mut ptr, mut ty } =
-                    self.scopes.get_from_last(*id).ok_or(IRError::String(format!("undeclared undeclared '{}'", id)))?;
+                    self.lvalue_symbol_table.get_from_last(*id).ok_or(IRError::String(format!("undeclared undeclared '{}'", id)))?;
 
                 // make sure we are subscripting an array
                 if !ty.is_array() {
@@ -524,7 +522,8 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     fn cgen_fn_call(&mut self, fn_call: &'ctx FnCallAST) -> IRResult<(CallSiteValue<'ctx>, IRType)> {
-        let function_entry = self.functions.get(fn_call.name).ok_or(IRError::String(format!("Function {} not found", fn_call.name)))?;
+        let function_entry =
+            self.function_symbol_table.get(fn_call.name).ok_or(IRError::String(format!("Function {} not found", fn_call.name)))?;
         //(func, func_type, func_captures)
         let func_value = &function_entry.function;
         let func_type = &function_entry.return_ty;
@@ -818,7 +817,7 @@ impl<'ctx> Compiler<'ctx> {
                     let ty = self.get_irtype(type_);
                     let ptr = self.builder.build_alloca(self.from_irtype(&ty).into_int_type(), name)?;
 
-                    self.scopes
+                    self.lvalue_symbol_table
                         .try_insert(name, LValueEntry::new(ptr, ty))
                         .map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
                 }
@@ -830,7 +829,7 @@ impl<'ctx> Compiler<'ctx> {
 
                     let ptr = self.builder.build_array_alloca(self.from_irtype(&ty).into_int_type(), size, name)?;
 
-                    self.scopes
+                    self.lvalue_symbol_table
                         .try_insert(name, LValueEntry::new(ptr, ir_type))
                         .map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
                 }
@@ -861,7 +860,7 @@ impl<'ctx> Compiler<'ctx> {
         params: &Vec<VarDefAST<'ctx>>,
         locals: &Vec<LocalDefinitionAST<'ctx>>,
     ) -> Scope<&'ctx str, LValueEntry<'ctx>> {
-        let captures = self.scopes.get_upper_scope().unwrap();
+        let captures = self.lvalue_symbol_table.get_upper_scope().unwrap();
         let mut result = captures.clone();
 
         for param in params {
@@ -881,7 +880,7 @@ impl<'ctx> Compiler<'ctx> {
         let name = func.name;
 
         //* Create new scope
-        self.scopes.push();
+        self.lvalue_symbol_table.push();
 
         //* ------------------------ *//
         //* Create function protoype *//
@@ -954,7 +953,7 @@ impl<'ctx> Compiler<'ctx> {
             param_ir_types.push(ir_type.clone());
 
             // Add parameter to functions scope
-            self.scopes
+            self.lvalue_symbol_table
                 .try_insert(arg.name, LValueEntry::new(param_ptr, ir_type))
                 .map_err(|_| IRError::String(format!(" multiple arguments with name of' {}'", arg.name)))?;
         }
@@ -978,28 +977,28 @@ impl<'ctx> Compiler<'ctx> {
             // todo: hint llvm ir for the dereference size
 
             param_ir_types.push(ir_type.clone());
-            self.scopes
+            self.lvalue_symbol_table
                 .try_insert(capture, LValueEntry::new(param_ptr, ir_type))
                 .map_err(|_| IRError::String("Should not happede multiple captures with the same name".to_string()))?;
         }
 
         //* Insert function into functions scope
-        self.functions
+        self.function_symbol_table
             .try_insert(name, FunctionEntry::new_extern(function, self.get_irtype(&func.r_type), param_ir_types))
             .map_err(|_| IRError::String(format!(" multiple functions with name of' {}'", name)))?;
 
         self.builder.position_at_end(block);
 
         //* Generate locals
-        self.functions.push();
+        self.function_symbol_table.push();
         self.cgen_locals(&func.locals)?;
 
         //* Generte function body
         self.cgen_statments(&func.body)?;
 
         //* Prepare to leave function
-        self.scopes.pop();
-        self.functions.pop();
+        self.lvalue_symbol_table.pop();
+        self.function_symbol_table.pop();
 
         //* Check if any module of the CFG returns, and build return for void functions
         for bb in function.get_basic_blocks() {
