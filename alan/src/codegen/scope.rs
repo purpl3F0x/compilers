@@ -21,7 +21,9 @@ where
     K: Default + Hash + Eq + Clone,
     T: Clone,
 {
-    pub fn new() -> Scopes<K, T> { Scopes { scopes: vec![Scope::new()] } }
+    pub fn new() -> Scopes<K, T> {
+        Scopes { scopes: vec![Scope::new()] }
+    }
 
     pub fn get(&self, s: K) -> Option<T> {
         for scope in self.scopes.iter().rev() {
@@ -32,7 +34,9 @@ where
         None
     }
 
-    pub fn get_from_last(&self, s: K) -> Option<T> { self.scopes.last()?.get(&s).cloned() }
+    pub fn get_from_last(&self, s: K) -> Option<T> {
+        self.scopes.last()?.get(&s).cloned()
+    }
 
     pub fn try_insert(&mut self, s: K, val: T) -> Result<(), InsertError> {
         let entry = self.scopes.last_mut().unwrap().entry(s);
@@ -45,7 +49,15 @@ where
         }
     }
 
-    pub fn push(&mut self) { self.scopes.push(Scope::new()) }
+    pub fn push(&mut self) {
+        self.scopes.push(Scope::new())
+    }
 
-    pub fn pop(&mut self) { self.scopes.pop(); }
+    pub fn pop(&mut self) {
+        self.scopes.pop();
+    }
+
+    pub fn get_upper_scope(&self) -> Option<&Scope<K, T>> {
+        self.scopes.get(self.scopes.len() - 2)
+    }
 }

@@ -1,9 +1,11 @@
+use std::any::Any;
 use std::borrow::Borrow;
 
 use super::ast::*;
+use super::scope::{Scope, Scopes};
+use super::symbol_table_entries::{FunctionEntry, LValueEntry};
 use super::IRFunctionType;
 use super::IntType as AlanIntType;
-use super::Scopes;
 use super::{IRError, IRResult, IRType};
 
 use inkwell::values::CallSiteValue;
@@ -12,8 +14,6 @@ use stdlib::LIBALAN_BITCODE as STDLIB_IR; // append stdlib as bitcode (see here:
 pub use inkwell::context::Context;
 
 use inkwell::types::AnyTypeEnum;
-use inkwell::values::AnyValue;
-use inkwell::values::AnyValueEnum;
 use inkwell::values::BasicMetadataValueEnum;
 use inkwell::{
     basic_block::BasicBlock,
@@ -22,7 +22,7 @@ use inkwell::{
     passes::PassBuilderOptions,
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine},
     types::{BasicMetadataTypeEnum, BasicTypeEnum, IntType, PointerType, VoidType},
-    values::{AsValueRef, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue},
+    values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue},
     AddressSpace, IntPredicate,
 };
 
@@ -35,8 +35,8 @@ pub struct Compiler<'ctx> {
     // For Bookeeping
     // todo: use ID instead of name
     // hash map of the addresses of variabels and their underlying types
-    scopes: Scopes<&'ctx str, (PointerValue<'ctx>, IRType)>,
-    functions: Scopes<&'ctx str, (FunctionValue<'ctx>, IRFunctionType)>,
+    scopes: Scopes<&'ctx str, LValueEntry<'ctx>>,
+    functions: Scopes<&'ctx str, (FunctionValue<'ctx>, IRFunctionType, Option<Scope<&'ctx str, (PointerValue<'ctx>, IRType)>>)>,
 
     // Types
     int_type: IntType<'ctx>,
@@ -56,7 +56,9 @@ impl<'ctx> Compiler<'ctx> {
         format!("{}.{}.{}", major, minor, patch)
     }
 
-    pub fn system_triple() -> String { String::from_utf8_lossy(TargetMachine::get_default_triple().as_str().to_bytes()).to_string() }
+    pub fn system_triple() -> String {
+        String::from_utf8_lossy(TargetMachine::get_default_triple().as_str().to_bytes()).to_string()
+    }
 
     pub fn new(context: &'ctx Context) -> Self {
         let module = context.create_module("main_module");
@@ -123,6 +125,15 @@ impl<'ctx> Compiler<'ctx> {
         self.module.run_passes(PASSES, &target_machine, pass_options).unwrap()
     }
 
+    pub fn basic_optimize(&self) -> IRResult<()> {
+        let target_machine: TargetMachine = self.generate_target(None, None, None).unwrap();
+        let pass_options = PassBuilderOptions::create();
+        pass_options.set_verify_each(true);
+
+        const PASSES: &str = "default<O0>,sroa,globaldce,deadargelim";
+        self.module.run_passes(PASSES, &target_machine, pass_options).map_err(|e| IRError::String(e.to_string()))
+    }
+
     pub fn compile(&mut self, program: &'ctx FunctionAST) -> IRResult<()> {
         // ? Enchancment, allow main to have signature of (int argc, char[] argv) ?
 
@@ -149,11 +160,13 @@ impl<'ctx> Compiler<'ctx> {
         // Hardcoded return void() function, should have passed semantic
         self.builder.build_return(None)?;
 
+        // self.basic_optimize()
         Ok(self.module.verify()?)
-        // Ok(())
     }
 
-    pub fn set_source_file_name(&self, name: &str) { self.module.set_source_file_name(name); }
+    pub fn set_source_file_name(&self, name: &str) {
+        self.module.set_source_file_name(name);
+    }
 
     pub fn imm_as_string(&self) -> String {
         // todo! run at least an -O0 pass, to get rid of dead functions
@@ -263,7 +276,7 @@ impl<'ctx> Compiler<'ctx> {
 
         macro_rules! register_function {
             ($name:expr, $func:expr, $ir_type:expr) => {
-                self.functions.try_insert($name, ($func, $ir_type)).unwrap()
+                self.functions.try_insert($name, ($func, $ir_type, None)).unwrap()
             };
         }
         // ? Automate this ?
@@ -408,7 +421,7 @@ impl<'ctx> Compiler<'ctx> {
                 ))
             }
             ExprAST::LValue(lval) => {
-                let (ptr, ty) = self.cgen_lvalue_ptr(lval)?;
+                let LValueEntry { ptr, ty } = self.cgen_lvalue_ptr(lval)?;
                 Ok((ptr.as_basic_value_enum(), ty))
             }
 
@@ -423,12 +436,12 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    fn cgen_lvalue_ptr(&mut self, lval: &'ctx LValueAST) -> IRResult<(PointerValue<'ctx>, IRType)> {
+    fn cgen_lvalue_ptr(&mut self, lval: &'ctx LValueAST) -> IRResult<LValueEntry<'ctx>> {
         match lval {
             LValueAST::String(s) => {
                 let str = self.builder.build_global_string_ptr(s, "glob.str")?.as_pointer_value();
 
-                Ok((
+                Ok(LValueEntry::new(
                     str,
                     IRType::Array(Box::new(IRType::Byte), (s.len() + 1) as i32), // ! this isn't that correct (maybe string type makes sense ?)
                 ))
@@ -449,7 +462,8 @@ impl<'ctx> Compiler<'ctx> {
 
                 let expr_res = self.cgen_int_value_or_load(expr_res, &expr_ty)?;
 
-                let (mut ptr, mut ty) = self.scopes.get_from_last(*id).ok_or(IRError::String(format!("undeclared undeclared '{}'", id)))?;
+                let LValueEntry { mut ptr, mut ty } =
+                    self.scopes.get_from_last(*id).ok_or(IRError::String(format!("undeclared undeclared '{}'", id)))?;
 
                 // make sure we are subscripting an array
                 if !ty.is_array() {
@@ -470,10 +484,10 @@ impl<'ctx> Compiler<'ctx> {
 
                 let element_pointer = match pointer_ty {
                     AnyTypeEnum::IntType(t) => unsafe {
-                        self.builder.build_in_bounds_gep(t, ptr, &[expr_res], format!("idx.{}", id).as_str())
+                        self.builder.build_in_bounds_gep(t, ptr, &[self.const_zero, expr_res], format!("idx.{}", id).as_str())
                     },
                     AnyTypeEnum::ArrayType(t) => unsafe {
-                        self.builder.build_in_bounds_gep(t, ptr, &[expr_res], format!("idx.{}", id).as_str())
+                        self.builder.build_in_bounds_gep(t, ptr, &[self.const_zero, expr_res], format!("idx.{}", id).as_str())
                     },
                     // ? this should be ok for now, we only have 1D arrays
                     // AnyTypeEnum::PointerType(t) => unsafe {
@@ -482,7 +496,7 @@ impl<'ctx> Compiler<'ctx> {
                     _ => unreachable!(),
                 };
 
-                Ok((element_pointer?, iner_type.clone()))
+                Ok(LValueEntry::new(element_pointer?, iner_type.clone()))
             }
         }
     }
@@ -512,11 +526,12 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     fn cgen_fn_call(&mut self, fn_call: &'ctx FnCallAST) -> IRResult<(CallSiteValue<'ctx>, IRType)> {
-        let (func, func_type) = self.functions.get(fn_call.name).ok_or(IRError::String(format!("Function {} not found", fn_call.name)))?;
+        let (func, func_type, func_captures) =
+            self.functions.get(fn_call.name).ok_or(IRError::String(format!("Function {} not found", fn_call.name)))?;
 
         let call_params = &fn_call.args;
 
-        // * Check if the number of arguments match
+        //* Check if the number of arguments match
         if func_type.params.len() != call_params.len() {
             return Err(IRError::String(format!(
                 "Function '{}' with type {} expected {} arguments, got {}",
@@ -526,15 +541,15 @@ impl<'ctx> Compiler<'ctx> {
                 call_params.len()
             )));
         }
-        // * args to be passed to builder
+        //* args to be passed to builder
         let mut args: Vec<BasicMetadataValueEnum> = Vec::with_capacity(call_params.len());
 
-        // * Check if the types of the arguments match
+        //* Check if the types of the arguments match
         for (i, (param_ty, arg)) in func_type.params.iter().zip(call_params.iter()).enumerate() {
             let (mut arg, mut arg_ty) = self.cgen_expresion(arg)?;
 
             match &param_ty {
-                // * Handle primitive types
+                //* Handle primitive types
                 IRType::Int | IRType::Byte => {
                     if param_ty != &arg_ty {
                         return Err(IRError::String(format!(
@@ -545,7 +560,7 @@ impl<'ctx> Compiler<'ctx> {
                     let arg = self.cgen_int_value_or_load(arg, &arg_ty)?;
                     args.push(arg.into())
                 }
-                // * Hadle references
+                //* Hadle references
                 IRType::Reference(_ty) => {
                     if !arg.is_pointer_value() {
                         return Err(IRError::String(format!(
@@ -657,7 +672,7 @@ impl<'ctx> Compiler<'ctx> {
                     return Err(IRError::String("Cannot assign to a string constant".to_string()));
                 }
                 // todo: this neeeds further checking
-                let (mut lval_ptr, mut lval_type) = self.cgen_lvalue_ptr(lvalue)?;
+                let LValueEntry { ptr: mut lval_ptr, ty: mut lval_type } = self.cgen_lvalue_ptr(lvalue)?;
                 let (expr, expr_type): (BasicValueEnum<'ctx>, IRType) = self.cgen_expresion(expr)?;
 
                 if !lval_type.is_primitive() & !lval_type.is_primitive_reference() {
@@ -677,7 +692,6 @@ impl<'ctx> Compiler<'ctx> {
                     }
                 }
 
-                //
                 let expr = self.cgen_int_value_or_load(expr, &expr_type)?;
 
                 if expr.get_type() != self.from_irtype(&lval_type).into_int_type() {
@@ -691,7 +705,6 @@ impl<'ctx> Compiler<'ctx> {
             }
 
             StatementAST::FunctionCall(fn_call) => {
-                // todo: check if the function returns void ??
                 let (_, fn_value) = self.cgen_fn_call(fn_call)?;
                 if !fn_value.is_void() {
                     return Err(IRError::String(format!(
@@ -709,6 +722,7 @@ impl<'ctx> Compiler<'ctx> {
                     self.builder.build_return(None)?;
                 }
             }
+
             StatementAST::If { condition, then, else_ } => {
                 // todo: chain if else, instead of recurscivly generating the statments to avoid multiple branches
                 let block = self.builder.get_insert_block().unwrap();
@@ -733,7 +747,7 @@ impl<'ctx> Compiler<'ctx> {
                     self.builder.build_unconditional_branch(end_block)?;
                 }
 
-                //* */ Build(?) else block
+                //* Build(?) else block
                 if let Some(else_block) = else_block {
                     self.builder.position_at_end(else_block);
                     self.cgen_statement(else_.as_ref().unwrap())?;
@@ -742,7 +756,6 @@ impl<'ctx> Compiler<'ctx> {
                         self.builder.build_unconditional_branch(end_block)?;
                     }
                 }
-
                 //* End block
                 if end_block.get_first_use() == None {
                     // if both branches return, delete end block
@@ -799,7 +812,9 @@ impl<'ctx> Compiler<'ctx> {
                     let ty = self.get_irtype(type_);
                     let ptr = self.builder.build_alloca(self.from_irtype(&ty).into_int_type(), name)?;
 
-                    self.scopes.try_insert(name, (ptr, ty)).map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
+                    self.scopes
+                        .try_insert(name, LValueEntry::new(ptr, ty))
+                        .map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
                 }
                 LocalDefinitionAST::ArrayDef { name, type_, size } => {
                     let ty = self.get_irtype(type_);
@@ -809,7 +824,9 @@ impl<'ctx> Compiler<'ctx> {
 
                     let ptr = self.builder.build_array_alloca(self.from_irtype(&ty).into_int_type(), size, name)?;
 
-                    self.scopes.try_insert(name, (ptr, ir_type)).map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
+                    self.scopes
+                        .try_insert(name, LValueEntry::new(ptr, ir_type))
+                        .map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
                 }
                 LocalDefinitionAST::FunctionDef(f) => {
                     // save current block (aka position)
@@ -825,44 +842,91 @@ impl<'ctx> Compiler<'ctx> {
         Ok(())
     }
 
+    /// Generate the captures for a function.  
+    /// Copies tha outer scope symbol table and removes the names that are shadowed by the function parameters and locals.  
+    ///
+    /// Nested scopes are implemented using λ lifting..
+    /// This function will get the outer scope of function and will effectively generate a hashmap of variables
+    /// that will need to be passed to the function as parameters
+    /// The goal is to transform nested functions into top-level functions by converting local variables they access into explicit parameters.
+    /// This eliminates the need for nested scope management. See also internals of [cgen_function](Self::cgen_function) and [cgen_fn_call](Self::cgen_fn_call)
+    fn generate_captures(
+        &self,
+        params: &Vec<VarDefAST<'ctx>>,
+        locals: &Vec<LocalDefinitionAST<'ctx>>,
+    ) -> Scope<&'ctx str, LValueEntry<'ctx>> {
+        let captures = self.scopes.get_upper_scope().unwrap();
+        let mut result = captures.clone();
+
+        for param in params {
+            result.remove(&param.name);
+        }
+        for local in locals {
+            if let LocalDefinitionAST::VarDef { name, type_: _ } = local {
+                result.remove(name);
+            }
+        }
+        result
+    }
+
+    /// Generate the IR for a function
+    /// This function will create a new scope for the function, and will generate the function prototype and body
     fn cgen_function(&mut self, func: &'ctx FunctionAST<'ctx>) -> IRResult<FunctionValue<'ctx>> {
         let name = func.name;
 
-        // * Create function protoype
-        let return_type = self.type_to_any_type(&func.r_type);
+        //* Create new scope
+        self.scopes.push();
 
+        //* ------------------------ *//
+        //* Create function protoype *//
+        //* ------------------------ *//
+        let return_type = self.type_to_any_type(&func.r_type);
+        //* Build function parameters
         let mut param_types: Vec<BasicMetadataTypeEnum> = Vec::with_capacity(func.params.len());
         for param in &func.params {
             param_types.push(self.type_to_basic_type(&param.type_).into());
         }
+        // In addition to the parameters, we need to pass the captures
 
+        let captures = self.generate_captures(&func.params, &func.locals);
+
+        // add a reference to the functions signature for each capture
+        for _capture in captures.iter() {
+            param_types.push(self.ptr_type.into());
+        }
+        //* Build return type
         let func_type: inkwell::types::FunctionType = match return_type {
             AnyTypeEnum::VoidType(_) => self.proc_type.fn_type(param_types.as_slice(), false),
             AnyTypeEnum::IntType(t) => t.fn_type(param_types.as_slice(), false),
             _ => unreachable!(),
         };
 
-        let function = self.module.add_function(name, func_type, None);
+        let function = self.module.add_function(name, func_type, Some(Linkage::Internal));
 
+        //* Create entry block
         let block = self.context.append_basic_block(function, "entry");
 
         self.builder.position_at_end(block);
 
-        //* Create new scope
-        self.scopes.push();
+        //* ------------------------ *//
+        //*     Build parameters     *//
+        //* ------------------------ *//
+        let mut param_ir_types: Vec<IRType> = Vec::with_capacity(func.params.len() + captures.len());
 
-        // * Build parameters
-        self.builder.position_at_end(block);
+        let func_params = function.get_params();
+        let mut func_params_iter = func_params.iter().enumerate();
 
-        let mut param_ir_types: Vec<IRType> = Vec::with_capacity(func.params.len());
+        //* Build normal parameters
+        for arg in func.params.iter() {
+            let (pos, param) = func_params_iter.next().unwrap();
 
-        for (pos, (param, arg)) in function.get_params().iter().zip(func.params.iter()).enumerate() {
             param.set_name(arg.name);
+
             let ir_type = self.get_irtype(&arg.type_);
 
             let param_ptr = self.builder.build_alloca(param.get_type(), format!("{}.addr", arg.name).as_str())?;
 
-            self.builder.build_store(param_ptr, param.as_basic_value_enum())?;
+            self.builder.build_store(param_ptr, *param)?;
 
             if ir_type.is_array() {
                 return Err(IRError::String(format!("Arrays can only be passed by reference")));
@@ -880,18 +944,45 @@ impl<'ctx> Compiler<'ctx> {
                     _ => {}
                 };
             }
-
+            // Add function signature
             param_ir_types.push(ir_type.clone());
+
+            // Add parameter to functions scope
             self.scopes
-                .try_insert(arg.name, (param_ptr, ir_type))
+                .try_insert(arg.name, LValueEntry::new(param_ptr, ir_type))
                 .map_err(|_| IRError::String(format!(" multiple arguments with name of' {}'", arg.name)))?;
         }
 
-        // * Insert function into functions scope
-        self.functions.try_insert(name, (function, IRFunctionType::new(self.get_irtype(&func.r_type), param_ir_types))).ok();
+        //* Build captures
+        for (capture, capture_entry) in captures.iter() {
+            let capture_ptr = &capture_entry.ptr;
+            let capture_ty = &capture_entry.ty;
+
+            let (_pos, param) = func_params_iter.next().unwrap();
+            param.set_name(capture);
+
+            let mut ir_type = capture_ty.clone();
+
+            if !ir_type.is_reference() {
+                ir_type = ir_type.into_reference_type();
+            }
+            let param_ptr = self.builder.build_alloca(self.ptr_type, format!("{}.capture", capture).as_str())?;
+            self.builder.build_store(param_ptr, *param)?;
+
+            // todo: hint llvm ir for the dereference size
+
+            param_ir_types.push(ir_type.clone());
+            self.scopes
+                .try_insert(capture, LValueEntry::new(param_ptr, ir_type))
+                .map_err(|_| IRError::String("Should not happede multiple captures with the same name".to_string()))?;
+        }
+
+        //* Insert function into functions scope
+        self.functions.try_insert(name, (function, IRFunctionType::new(self.get_irtype(&func.r_type), param_ir_types), None)).ok();
 
         self.builder.position_at_end(block);
-        // * Generate locals
+
+        //* Generate locals
         self.functions.push();
         self.cgen_locals(&func.locals)?;
 
