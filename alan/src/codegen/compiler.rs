@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::collections::HashMap;
 
 use super::ast::*;
 use super::scope::{Scope, Scopes};
@@ -133,27 +134,36 @@ impl<'ctx> Compiler<'ctx> {
     pub fn compile(&mut self, program: &'ctx FunctionAST) -> IRResult<()> {
         // ? Enchancment, allow main to have signature of (int argc, char[] argv) ?
 
+        //* Push a new scope, this will be the outer scope of the program, holding the stdlib functions
         self.function_symbol_table.push();
         self.load_stdlib()?;
 
-        // Manually add the main function, to make sure ia has name of main
+        //* Manually add the main function, to make sure ia has name of main
+        if program.r_type != Type::Void {
+            return Err(IRError::String("Top level function must return proc".to_string()));
+        }
+        if program.params.len() != 0 {
+            return Err(IRError::String("Top level function must not have arguments".to_string()));
+        }
 
+        //* Start creating main
         let main_type = self.proc_type.fn_type(&[], false);
         let main_func = self.module.add_function("main", main_type, None);
         let basic_block = self.context.append_basic_block(main_func, "entry");
 
         self.builder.position_at_end(basic_block);
 
+        //* Push new scope as we enter the main body now
         self.lvalue_symbol_table.push();
         self.function_symbol_table.push();
 
         self.cgen_locals(&program.locals)?;
         self.builder.position_at_end(basic_block);
 
-        // Generate function body
+        //* Generate function body
         self.cgen_statments(&program.body)?;
 
-        // Hardcoded return void() function, should have passed semantic
+        // Hardcoded return void() function, we have already check it's a proc
         self.builder.build_return(None)?;
 
         // self.basic_optimize()
@@ -497,7 +507,7 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    // This function will get a IntValue or load an IntValue from a PointerValue
+    /// This function will get a IntValue or load an IntValue from a PointerValue (aka reference)
     fn cgen_int_value_or_load(&mut self, value: BasicValueEnum<'ctx>, ty: &IRType) -> IRResult<IntValue<'ctx>> {
         if value.is_int_value() {
             Ok(value.into_int_value())
@@ -552,16 +562,25 @@ impl<'ctx> Compiler<'ctx> {
             match &param_ty {
                 //* Handle primitive types
                 IRType::Int | IRType::Byte => {
-                    if param_ty != &arg_ty {
+                    let mut under_ty = &arg_ty; // We will use this as a placehold, if calle arg is a refernce we will use the inner type for the type checking
+
+                    if arg_ty.is_reference() {
+                        // Convert reference types to their inner type
+                        under_ty = arg_ty.get_inner_type().unwrap();
+                    }
+
+                    if param_ty != under_ty {
                         return Err(IRError::String(format!(
                             "Function '{}' expected argument({}) of type {}, got {}",
                             fn_call.name, i, param_ty, arg_ty
                         )));
                     }
+
                     let arg = self.cgen_int_value_or_load(arg, &arg_ty)?;
                     args.push(arg.into())
                 }
-                //* Hadle references
+
+                //* Handle references
                 IRType::Reference(_ty) => {
                     if !arg.is_pointer_value() {
                         return Err(IRError::String(format!(
@@ -583,6 +602,20 @@ impl<'ctx> Compiler<'ctx> {
                     args.push(arg.into())
                 }
                 _ => unreachable!("not implemented call"), // this should be unreachanble as we don't use pointers IRTypes, and Arrays should be references
+            }
+        }
+
+        //* Pass cacptures to the function
+        //* Practicallly we could save the ptr in the symbol table, when building the function
+        //* But this is safer, for now
+        if let Some(captures) = _func_captures {
+            for (lval, ty) in captures.into_iter() {
+                let capture_ptr = self
+                    .lvalue_symbol_table
+                    .get_from_last(lval)
+                    .ok_or_else(|| IRError::String(format!("Capture '{}' not found in the current scope", lval)))?;
+
+                args.push(capture_ptr.ptr.into());
             }
         }
 
@@ -847,8 +880,8 @@ impl<'ctx> Compiler<'ctx> {
         Ok(())
     }
 
-    /// Generate the captures for a function.  
-    /// Copies tha outer scope symbol table and removes the names that are shadowed by the function parameters and locals.  
+    /// Helper method to generate the captures for a function.  
+    /// Copies tha outer scope's symbol table and removes the names that are shadowed by the function parameters and locals.  
     ///
     /// Nested scopes are implemented using λ lifting..
     /// This function will get the outer scope of function and will effectively generate a hashmap of variables
@@ -868,6 +901,8 @@ impl<'ctx> Compiler<'ctx> {
         }
         for local in locals {
             if let LocalDefinitionAST::VarDef { name, type_: _ } = local {
+                result.remove(name);
+            } else if let LocalDefinitionAST::ArrayDef { name, type_: _, size: _ } = local {
                 result.remove(name);
             }
         }
@@ -959,6 +994,8 @@ impl<'ctx> Compiler<'ctx> {
         }
 
         //* Build captures
+        let mut symbol_entry_capture_list: HashMap<&'ctx str, IRType> = HashMap::new();
+
         for (capture, capture_entry) in captures.iter() {
             let _capture_ptr = &capture_entry.ptr;
             let capture_ty = &capture_entry.ty;
@@ -975,16 +1012,16 @@ impl<'ctx> Compiler<'ctx> {
             self.builder.build_store(param_ptr, *param)?;
 
             // todo: hint llvm ir for the dereference size
-
-            param_ir_types.push(ir_type.clone());
+            // param_ir_types.push(ir_type.clone());
+            symbol_entry_capture_list.insert(capture, ir_type.clone());
             self.lvalue_symbol_table
                 .try_insert(capture, LValueEntry::new(param_ptr, ir_type))
-                .map_err(|_| IRError::String("Should not happede multiple captures with the same name".to_string()))?;
+                .map_err(|_| IRError::String("Should not happen - multiple captures with the same name".to_string()))?;
         }
 
         //* Insert function into functions scope
         self.function_symbol_table
-            .try_insert(name, FunctionEntry::new_extern(function, self.get_irtype(&func.r_type), param_ir_types))
+            .try_insert(name, FunctionEntry::new(function, self.get_irtype(&func.r_type), param_ir_types, symbol_entry_capture_list))
             .map_err(|_| IRError::String(format!(" multiple functions with name of' {}'", name)))?;
 
         self.builder.position_at_end(block);
