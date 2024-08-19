@@ -9,7 +9,6 @@ homepage = "https://github.com/purpl3F0x/compilers"
 [dependencies]
 alan = { path = "../alan" }
 clap = { version = "4.5.9", features = ["derive", "string"] }
-concolor = { version = "0.1.1", features = ["auto"] }
 shadow-rs = "0.30.0"
 yansi = {version = "1.0.1", features = ["detect-env"]}
 
