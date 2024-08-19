@@ -20,6 +20,18 @@ ___
 
 ## Build Instructions
 
+### Requirements
+
+#### LLVM - Clang
+The project is requires and pre-configured to use LLVM 18.
+
+If llvm is not in the default path `LLVM_SYS_180_PREFIX` should be set. <br>
+If you want to use any other version of llvm, [Cargo.toml](./alan/Cargo.toml) of alan crate should be configured accordingly.
+
+In addition, llvm-sys will <u>**try**</u> to link llvm staticaly, (platforms such Arch will be built with dynamic llvm libraries)
+
+### Building
+
 Clone the project
 
 ```bash
@@ -42,6 +54,12 @@ Build with cargo
 cargo build --release
 ```
 __Warning__: *By default x86 release builds are build for x86_64_v3 (avx,avx2) with lto*
+
+## Install
+If you want to install the *alanc* globally:
+```bash
+cargo install
+```
 
 ## Usage
 Run the program with `-h/--help` and you'll learn everything you need to know, on how to use it. 
