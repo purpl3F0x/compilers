@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::path::Path;
 
 use super::ast::*;
 use super::scope::{Scope, Scopes};
@@ -29,6 +30,7 @@ pub struct Compiler<'ctx> {
     context: &'ctx Context,
     builder: Builder<'ctx>,
     module: Module<'ctx>,
+    target: TargetMachine,
 
     // Symbol Tables
     lvalue_symbol_table: Scopes<&'ctx str, LValueEntry<'ctx>>,
@@ -48,15 +50,45 @@ pub struct Compiler<'ctx> {
 }
 
 impl<'ctx> Compiler<'ctx> {
+    // Static methods
+
+    /// Get the version of the LLVM library as "major.minor.patch"
     pub fn llvm_version() -> String {
         let (major, minor, patch) = inkwell::support::get_llvm_version();
         format!("{}.{}.{}", major, minor, patch)
     }
 
+    /// Get the target triple of the system f.ex. x86_64-unknown-linux-gnu
     pub fn system_triple() -> String {
         String::from_utf8_lossy(TargetMachine::get_default_triple().as_str().to_bytes()).to_string()
     }
 
+    /// Generate a target machine with the given options
+    fn generate_target(
+        opt_level: Option<inkwell::OptimizationLevel>,
+        cpu: Option<&str>,
+        features: Option<&str>,
+    ) -> IRResult<TargetMachine> {
+        let target_triple = TargetMachine::get_default_triple();
+        // ? Add option for cross-compiling ?
+
+        Target::initialize_native(&InitializationConfig::default())?;
+
+        let target = Target::from_triple(&target_triple).unwrap();
+
+        target
+            .create_target_machine(
+                &target_triple,
+                cpu.unwrap_or("generic"),
+                features.unwrap_or(""),
+                opt_level.unwrap_or(inkwell::OptimizationLevel::None),
+                RelocMode::PIC,
+                CodeModel::Default,
+            )
+            .ok_or(IRError::String("Could not create target machine".to_string()))
+    }
+
+    /// Create a new compiler instance
     pub fn new(context: &'ctx Context) -> Self {
         let module = context.create_module("main_module");
         let builder = context.create_builder();
@@ -81,10 +113,13 @@ impl<'ctx> Compiler<'ctx> {
         let int_reference_attribute = context.create_enum_attribute(attr_id, std::mem::size_of::<AlanIntType>() as u64);
         let char_reference_attribute = context.create_enum_attribute(attr_id, 1 as u64);
 
+        let target = Self::generate_target(None, None, None).unwrap();
+
         Self {
             context: context,
             builder: builder,
             module: module,
+            target: target,
 
             lvalue_symbol_table: Scopes::new(),
             function_symbol_table: Scopes::new(),
@@ -100,9 +135,8 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
+    /// Optimize the module using the default optimization passes
     pub fn optimize(&self) {
-        let target_machine = self.generate_target(None, None, None).unwrap();
-
         let pass_options = PassBuilderOptions::create();
         pass_options.set_verify_each(true);
         pass_options.set_debug_logging(false);
@@ -119,18 +153,10 @@ impl<'ctx> Compiler<'ctx> {
         // Optimize using all the passes of -O3 optimization level
         const PASSES: &str = "default<O3>";
 
-        self.module.run_passes(PASSES, &target_machine, pass_options).unwrap()
+        self.module.run_passes(PASSES, &self.target, pass_options).unwrap()
     }
 
-    pub fn basic_optimize(&self) -> IRResult<()> {
-        let target_machine: TargetMachine = self.generate_target(None, None, None).unwrap();
-        let pass_options = PassBuilderOptions::create();
-        pass_options.set_verify_each(true);
-
-        const PASSES: &str = "default<O0>,sroa,globaldce,deadargelim";
-        self.module.run_passes(PASSES, &target_machine, pass_options).map_err(|e| IRError::String(e.to_string()))
-    }
-
+    /// Compile the program into LLVM IR
     pub fn compile(&mut self, program: &'ctx FunctionAST) -> IRResult<()> {
         // ? Enchancment, allow main to have signature of (int argc, char[] argv) ?
 
@@ -166,8 +192,18 @@ impl<'ctx> Compiler<'ctx> {
         // Hardcoded return void() function, we have already check it's a proc
         self.builder.build_return(None)?;
 
-        self.basic_optimize()
+        self.basic_pass()
         // Ok(self.module.verify()?)
+    }
+
+    /// Runs some basic optimization passes on the module.  
+    /// Will (try) to get rid of unused lambda captures(sroa -> deadargelim), and unused stdlib declarations
+    fn basic_pass(&self) -> IRResult<()> {
+        let pass_options = PassBuilderOptions::create();
+        pass_options.set_verify_each(true);
+
+        const PASSES: &str = "default<O0>,sroa,globaldce,deadargelim";
+        self.module.run_passes(PASSES, &self.target, pass_options).map_err(|e| e.into())
     }
 
     pub fn set_source_file_name(&self, name: &str) {
@@ -175,17 +211,21 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     pub fn imm_as_string(&self) -> String {
-        // todo! run at least an -O0 pass, to get rid of dead functions
         self.module.print_to_string().to_string()
     }
 
     pub fn asm_as_string(&self) -> String {
-        let target_machine = self.generate_target(None, None, None).unwrap();
-
         let buf: inkwell::memory_buffer::MemoryBuffer =
-            target_machine.write_to_memory_buffer(&self.module, inkwell::targets::FileType::Assembly).unwrap();
-
+            self.target.write_to_memory_buffer(&self.module, inkwell::targets::FileType::Assembly).unwrap();
         String::from_utf8(buf.as_slice().to_vec()).unwrap()
+    }
+
+    pub fn imm_to_file(&self, output_file: &str) -> IRResult<()> {
+        self.module.print_to_file(output_file).map_err(|e| e.into())
+    }
+
+    pub fn asm_to_file(&self, path: &Path) -> IRResult<()> {
+        self.target.write_to_file(&self.module, inkwell::targets::FileType::Assembly, path).map_err(|e| e.into())
     }
 
     pub fn generate_binary(&self, _output_file: &str) -> IRResult<()> {
@@ -247,29 +287,6 @@ impl<'ctx> Compiler<'ctx> {
             Type::Ref(_ty) => self.ptr_type.into(),
             Type::Array(_ty) => self.ptr_type.into(),
         }
-    }
-
-    fn generate_target(
-        &self,
-        opt_level: Option<inkwell::OptimizationLevel>,
-        cpu: Option<&str>,
-        features: Option<&str>,
-    ) -> IRResult<TargetMachine> {
-        let target_triple = TargetMachine::get_default_triple();
-        Target::initialize_all(&InitializationConfig::default());
-
-        let target = Target::from_triple(&target_triple).unwrap();
-
-        target
-            .create_target_machine(
-                &target_triple,
-                cpu.unwrap_or("generic"),
-                features.unwrap_or(""),
-                opt_level.unwrap_or(inkwell::OptimizationLevel::None),
-                RelocMode::PIC,
-                CodeModel::Default,
-            )
-            .ok_or(IRError::String("Could not create target machine".to_string()))
     }
 
     /// Load the stdlib into the module, the stdlib symbol table is hardcoded in the stdlib
