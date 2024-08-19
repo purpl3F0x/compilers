@@ -50,7 +50,9 @@ pub struct Compiler<'ctx> {
 }
 
 impl<'ctx> Compiler<'ctx> {
-    // Static methods
+    //* ------------------------ *//
+    //*      Static Methods      *//
+    //* ------------------------ *//
 
     /// Get the version of the LLVM library as "major.minor.patch"
     pub fn llvm_version() -> String {
@@ -72,6 +74,8 @@ impl<'ctx> Compiler<'ctx> {
         let target_triple = TargetMachine::get_default_triple();
         // ? Add option for cross-compiling ?
 
+        // Aparently this is quite expensve(epsecially the AMDGPU one), so only initialize default target,
+        // as long as we don't support cross-compilation (yet).
         Target::initialize_native(&InitializationConfig::default())?;
 
         let target = Target::from_triple(&target_triple).unwrap();
@@ -81,12 +85,16 @@ impl<'ctx> Compiler<'ctx> {
                 &target_triple,
                 cpu.unwrap_or("generic"),
                 features.unwrap_or(""),
-                opt_level.unwrap_or(inkwell::OptimizationLevel::None),
+                opt_level.unwrap_or(inkwell::OptimizationLevel::Default),
                 RelocMode::PIC,
                 CodeModel::Default,
             )
             .ok_or(IRError::String("Could not create target machine".to_string()))
     }
+
+    //* ------------------------ *//
+    //*      Public Methods      *//
+    //* ------------------------ *//
 
     /// Create a new compiler instance
     pub fn new(context: &'ctx Context) -> Self {
@@ -135,27 +143,6 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    /// Optimize the module using the default optimization passes
-    pub fn optimize(&self) {
-        let pass_options = PassBuilderOptions::create();
-        pass_options.set_verify_each(true);
-        pass_options.set_debug_logging(false);
-        pass_options.set_loop_interleaving(true);
-        pass_options.set_loop_vectorization(true);
-        pass_options.set_loop_slp_vectorization(true);
-        pass_options.set_loop_unrolling(true);
-        pass_options.set_forget_all_scev_in_loop_unroll(true);
-        pass_options.set_licm_mssa_opt_cap(1);
-        pass_options.set_licm_mssa_no_acc_for_promotion_cap(10);
-        pass_options.set_call_graph_profile(true);
-        pass_options.set_merge_functions(true);
-
-        // Optimize using all the passes of -O3 optimization level
-        const PASSES: &str = "default<O3>";
-
-        self.module.run_passes(PASSES, &self.target, pass_options).unwrap()
-    }
-
     /// Compile the program into LLVM IR
     pub fn compile(&mut self, program: &'ctx FunctionAST) -> IRResult<()> {
         // ? Enchancment, allow main to have signature of (int argc, char[] argv) ?
@@ -196,6 +183,8 @@ impl<'ctx> Compiler<'ctx> {
         // Ok(self.module.verify()?)
     }
 
+    //*  Private but place it here to be directly visible on compile method
+
     /// Runs some basic optimization passes on the module.  
     /// Will (try) to get rid of unused lambda captures(sroa -> deadargelim), and unused stdlib declarations
     fn basic_pass(&self) -> IRResult<()> {
@@ -206,24 +195,50 @@ impl<'ctx> Compiler<'ctx> {
         self.module.run_passes(PASSES, &self.target, pass_options).map_err(|e| e.into())
     }
 
+    /// Optimize the module using the default optimization passes
+    pub fn optimize(&self) {
+        let pass_options = PassBuilderOptions::create();
+        pass_options.set_verify_each(true);
+        pass_options.set_debug_logging(false);
+        pass_options.set_loop_interleaving(true);
+        pass_options.set_loop_vectorization(true);
+        pass_options.set_loop_slp_vectorization(true);
+        pass_options.set_loop_unrolling(true);
+        pass_options.set_forget_all_scev_in_loop_unroll(true);
+        pass_options.set_licm_mssa_opt_cap(1);
+        pass_options.set_licm_mssa_no_acc_for_promotion_cap(10);
+        pass_options.set_call_graph_profile(true);
+        pass_options.set_merge_functions(true);
+
+        // Optimize using all the passes of -O3 optimization level
+        const PASSES: &str = "default<O3>";
+
+        self.module.run_passes(PASSES, &self.target, pass_options).unwrap()
+    }
+
+    /// Set the source file name of the module
     pub fn set_source_file_name(&self, name: &str) {
         self.module.set_source_file_name(name);
     }
 
+    /// Get the LLVM IR as a string
     pub fn imm_as_string(&self) -> String {
         self.module.print_to_string().to_string()
     }
 
+    /// Get assembly code as a string
     pub fn asm_as_string(&self) -> String {
         let buf: inkwell::memory_buffer::MemoryBuffer =
             self.target.write_to_memory_buffer(&self.module, inkwell::targets::FileType::Assembly).unwrap();
         String::from_utf8(buf.as_slice().to_vec()).unwrap()
     }
 
+    /// Write the LLVM IR to a file
     pub fn imm_to_file(&self, output_file: &str) -> IRResult<()> {
         self.module.print_to_file(output_file).map_err(|e| e.into())
     }
 
+    /// Write the assembly code to a file
     pub fn asm_to_file(&self, path: &Path) -> IRResult<()> {
         self.target.write_to_file(&self.module, inkwell::targets::FileType::Assembly, path).map_err(|e| e.into())
     }
@@ -232,6 +247,11 @@ impl<'ctx> Compiler<'ctx> {
         unimplemented!("Option to generate binary isn't implemented yet!");
     }
 
+    //* ------------------------ *//
+    //*     Private Methods      *//
+    //* ------------------------ *//
+
+    /// Comverts [ast::Type](super::ast::Type) to [IRType]
     fn get_irtype(&self, type_: &Type) -> IRType {
         match type_ {
             Type::Int => IRType::Int,
@@ -247,6 +267,7 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
+    /// Converts from [IRType] to [inkwell::types::AnyTypeEnum]
     fn from_irtype(&self, ty: &IRType) -> AnyTypeEnum<'ctx> {
         match ty {
             IRType::Int => self.int_type.into(),
@@ -270,6 +291,7 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
+    /// Convers from [inkwell::types::AnyTypeEnum] to [ast::Type](super::ast::Type)
     fn type_to_any_type(&self, ty: &Type) -> AnyTypeEnum<'ctx> {
         match ty {
             Type::Int => self.int_type.into(),
@@ -279,6 +301,7 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
+    /// Converts from [ast::Type](super::ast::Type) to [inkwell::types::BasicTypeEnum]
     fn type_to_basic_type(&self, ty: &Type) -> BasicTypeEnum<'ctx> {
         match ty {
             Type::Int => self.int_type.into(),
@@ -342,6 +365,11 @@ impl<'ctx> Compiler<'ctx> {
         Ok(())
     }
 
+    //* ------------------------ *//
+    //*      Coge Generation     *//
+    //* ------------------------ *//
+
+    /// Generate IR  for a [Literal]
     fn cgen_literal(&mut self, literal: &'ctx Literal) -> IRResult<(IntValue<'ctx>, IRType)> {
         Ok(match literal {
             Literal::Int(i) => (self.int_type.const_int(*i as u64, true), IRType::Int),
@@ -349,6 +377,7 @@ impl<'ctx> Compiler<'ctx> {
         })
     }
 
+    /// Generate IR for an [ExprAST]
     fn cgen_expresion(&mut self, expr: &'ctx ExprAST) -> IRResult<(BasicValueEnum<'ctx>, IRType)> {
         match expr {
             ExprAST::Error => Err(IRError::UnknownError),
@@ -459,6 +488,7 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
+    /// Generate IR for [LValueAST]
     fn cgen_lvalue_ptr(&mut self, lval: &'ctx LValueAST) -> IRResult<LValueEntry<'ctx>> {
         match lval {
             LValueAST::String(s) => {
@@ -548,6 +578,7 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
+    /// Generate IR for a [FnCallAST]
     fn cgen_fn_call(&mut self, fn_call: &'ctx FnCallAST) -> IRResult<(CallSiteValue<'ctx>, IRType)> {
         let function_entry =
             self.function_symbol_table.get(fn_call.name).ok_or(IRError::String(format!("Function {} not found", fn_call.name)))?;
@@ -623,8 +654,8 @@ impl<'ctx> Compiler<'ctx> {
         }
 
         //* Pass cacptures to the function
-        //* Practicallly we could save the ptr in the symbol table, when building the function
-        //* But this is safer, for now
+        //* Practically we could save the ptr in the symbol table, when building the function
+        //* But this is safer, and prefered for now
         if let Some(captures) = _func_captures {
             for (lval, _ty) in captures.into_iter() {
                 let capture_ptr = self
@@ -644,6 +675,7 @@ impl<'ctx> Compiler<'ctx> {
         Ok((call, func_type.clone()))
     }
 
+    /// Generate IR for a [ConditionAST]
     fn cgen_condition(&mut self, cond: &'ctx ConditionAST) -> IRResult<IntValue<'ctx>> {
         match cond {
             ConditionAST::BoolConst(b) => Ok(self.bool_type.const_int(*b as u64, false)),
@@ -716,6 +748,7 @@ impl<'ctx> Compiler<'ctx> {
         Ok(())
     }
 
+    /// Generate IR for a [StatementAST]
     fn cgen_statement(&mut self, stmt: &'ctx StatementAST) -> IRResult<()> {
         match stmt {
             StatementAST::Expr(e) => {
@@ -858,6 +891,8 @@ impl<'ctx> Compiler<'ctx> {
         Ok(())
     }
 
+    /// Generate IR for a [LocalDefinitionAST]
+    /// Definition will be added in order of appearance
     fn cgen_locals(&mut self, locals: &'ctx Vec<LocalDefinitionAST<'ctx>>) -> IRResult<()> {
         for local in locals {
             // todo: check for duplicates
@@ -926,7 +961,7 @@ impl<'ctx> Compiler<'ctx> {
         result
     }
 
-    /// Generate the IR for a function
+    /// Generate the IR for a [FunctionAST]
     /// This function will create a new scope for the function, and will generate the function prototype and body
     fn cgen_function(&mut self, func: &'ctx FunctionAST<'ctx>) -> IRResult<FunctionValue<'ctx>> {
         let name = func.name;
