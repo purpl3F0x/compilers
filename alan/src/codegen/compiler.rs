@@ -166,8 +166,8 @@ impl<'ctx> Compiler<'ctx> {
         // Hardcoded return void() function, we have already check it's a proc
         self.builder.build_return(None)?;
 
-        // self.basic_optimize()
-        Ok(self.module.verify()?)
+        self.basic_optimize()
+        // Ok(self.module.verify()?)
     }
 
     pub fn set_source_file_name(&self, name: &str) {
@@ -609,7 +609,7 @@ impl<'ctx> Compiler<'ctx> {
         //* Practicallly we could save the ptr in the symbol table, when building the function
         //* But this is safer, for now
         if let Some(captures) = _func_captures {
-            for (lval, ty) in captures.into_iter() {
+            for (lval, _ty) in captures.into_iter() {
                 let capture_ptr = self
                     .lvalue_symbol_table
                     .get_from_last(lval)
