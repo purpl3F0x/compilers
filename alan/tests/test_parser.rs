@@ -1,19 +1,12 @@
-mod parser_tests
-{
+mod parser_tests {
     use alan::ast::*;
     use alan::lexer::*;
     use alan::parser::*;
-    use chumsky::error::Error;
     use logos::Logos;
-    use logos::Span;
 
-    use chumsky::{
-        input::{Stream, ValueInput},
-        prelude::*,
-    };
+    use chumsky::{input::Stream, prelude::*};
 
-    fn parse_expr_test(input: &str) -> ExprAST
-    {
+    fn parse_expr_test(input: &str) -> ExprAST {
         let lex = Token::lexer(input);
 
         let token_iter = lex.spanned().map(|(tok, span)| match tok {
@@ -27,8 +20,7 @@ mod parser_tests
     }
 
     #[test]
-    fn test_expr()
-    {
+    fn test_expr() {
         let input = "(((((((((((((((((((((((( 42 + 17) + 42)))))))))))))))))))))))";
         let res = parse_expr_test(input);
         assert_eq!(
@@ -80,10 +72,7 @@ mod parser_tests
         assert_eq!(
             res,
             ExprAST::InfixOp {
-                rhs: Box::new(ExprAST::LValue(LValueAST::ArraySubscript {
-                    id: "a",
-                    expr: Box::new(ExprAST::Literal(Literal::Int(42))),
-                },)),
+                rhs: Box::new(ExprAST::LValue(LValueAST::ArraySubscript { id: "a", expr: Box::new(ExprAST::Literal(Literal::Int(42))) },)),
                 op: InfixOperator::Add,
                 lhs: Box::new(ExprAST::InfixOp {
                     rhs: Box::new(ExprAST::FunctionCall(FnCallAST {
@@ -103,10 +92,7 @@ mod parser_tests
                     })),
                     op: InfixOperator::Add,
                     lhs: Box::new(ExprAST::InfixOp {
-                        rhs: Box::new(ExprAST::FunctionCall(FnCallAST {
-                            name: "b",
-                            args: vec![],
-                        })),
+                        rhs: Box::new(ExprAST::FunctionCall(FnCallAST { name: "b", args: vec![] })),
                         op: InfixOperator::Add,
                         lhs: Box::new(ExprAST::LValue(LValueAST::Identifier("a"))),
                     }),

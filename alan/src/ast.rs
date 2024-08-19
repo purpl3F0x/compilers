@@ -7,8 +7,7 @@ use super::*;
 // todo: make AST printer
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Type
-{
+pub enum Type {
     // Primitive Types
     Int,
     Byte,
@@ -20,23 +19,20 @@ pub enum Type
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Literal
-{
+pub enum Literal {
     Int(IntType),
     Byte(char),
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum PrefixOperator
-{
+pub enum PrefixOperator {
     Plus,
     Minus,
     Not,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum InfixOperator
-{
+pub enum InfixOperator {
     // Mathematical Operators
     Add,
     Sub,
@@ -56,22 +52,16 @@ pub enum InfixOperator
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum LValueAST<'a>
-{
+pub enum LValueAST<'a> {
     String(internment::Intern<String>),
 
     Identifier(&'a str),
 
-    ArraySubscript
-    {
-        id: &'a str,
-        expr: Box<ExprAST<'a>>,
-    },
+    ArraySubscript { id: &'a str, expr: Box<ExprAST<'a>> },
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ExprAST<'a>
-{
+pub enum ExprAST<'a> {
     Error,
 
     Literal(Literal),
@@ -79,111 +69,61 @@ pub enum ExprAST<'a>
     // Local(&'a str),
     LValue(LValueAST<'a>),
 
-    PrefixOp
-    {
-        op: PrefixOperator,
-        expr: Box<ExprAST<'a>>,
-    },
+    PrefixOp { op: PrefixOperator, expr: Box<ExprAST<'a>> },
 
-    InfixOp
-    {
-        lhs: Box<ExprAST<'a>>,
-        op: InfixOperator,
-        rhs: Box<ExprAST<'a>>,
-    },
+    InfixOp { lhs: Box<ExprAST<'a>>, op: InfixOperator, rhs: Box<ExprAST<'a>> },
 
     FunctionCall(FnCallAST<'a>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ConditionAST<'a>
-{
+pub enum ConditionAST<'a> {
     Error,
 
     BoolConst(bool),
 
-    PrefixOp
-    {
-        op: PrefixOperator,
-        expr: Box<ConditionAST<'a>>,
-    },
+    PrefixOp { op: PrefixOperator, expr: Box<ConditionAST<'a>> },
 
-    ExprComparison
-    {
-        lhs: Box<ExprAST<'a>>,
-        op: InfixOperator,
-        rhs: Box<ExprAST<'a>>,
-    },
+    ExprComparison { lhs: Box<ExprAST<'a>>, op: InfixOperator, rhs: Box<ExprAST<'a>> },
 
-    InfixLogicOp
-    {
-        lhs: Box<ConditionAST<'a>>,
-        op: InfixOperator,
-        rhs: Box<ConditionAST<'a>>,
-    },
+    InfixLogicOp { lhs: Box<ConditionAST<'a>>, op: InfixOperator, rhs: Box<ConditionAST<'a>> },
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum StatementAST<'a>
-{
+pub enum StatementAST<'a> {
     Error,
 
     Null,
 
-    Assignment
-    {
-        lvalue: LValueAST<'a>,
-        expr: ExprAST<'a>,
-    },
+    Assignment { lvalue: LValueAST<'a>, expr: ExprAST<'a> },
 
     Expr(ExprAST<'a>),
     Compound(Vec<StatementAST<'a>>),
 
     FunctionCall(FnCallAST<'a>),
 
-    If
-    {
-        condition: ConditionAST<'a>,
-        then: Box<StatementAST<'a>>,
-        else_: Option<Box<StatementAST<'a>>>,
-    },
+    If { condition: ConditionAST<'a>, then: Box<StatementAST<'a>>, else_: Option<Box<StatementAST<'a>>> },
 
-    While
-    {
-        condition: ConditionAST<'a>,
-        body: Box<StatementAST<'a>>,
-    },
+    While { condition: ConditionAST<'a>, body: Box<StatementAST<'a>> },
 
     Return(Option<ExprAST<'a>>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct VarDefAST<'a>
-{
+pub struct VarDefAST<'a> {
     pub name: &'a str,
     pub type_: Type,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum LocalDefinitionAST<'a>
-{
+pub enum LocalDefinitionAST<'a> {
     FunctionDef(FunctionAST<'a>),
-    VarDef
-    {
-        name: &'a str,
-        type_: Type,
-    },
-    ArrayDef
-    {
-        name: &'a str,
-        type_: Type,
-        size: IntType,
-    },
+    VarDef { name: &'a str, type_: Type },
+    ArrayDef { name: &'a str, type_: Type, size: IntType },
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FunctionAST<'a>
-{
+pub struct FunctionAST<'a> {
     pub name: &'a str,
     pub r_type: Type,
 
@@ -193,16 +133,13 @@ pub struct FunctionAST<'a>
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FnCallAST<'a>
-{
+pub struct FnCallAST<'a> {
     pub name: &'a str,
     pub args: Vec<ExprAST<'a>>,
 }
 
-impl fmt::Display for InfixOperator
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
-    {
+impl fmt::Display for InfixOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let op = match self {
             InfixOperator::Add => "+",
             InfixOperator::Sub => "-",

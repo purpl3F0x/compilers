@@ -1,16 +1,12 @@
 #[cfg(test)]
-mod lexer_tests
-{
+mod lexer_tests {
     use alan::lexer::{LexingError, Token};
     use logos::Logos;
     use logos::Span;
 
     #[test]
-    fn test_identidiers()
-    {
-        let tokens: Vec<_> = Token::lexer("foo foo42 foo_42 _foo_42_ foo42 42foo")
-            .spanned()
-            .collect();
+    fn test_identidiers() {
+        let tokens: Vec<_> = Token::lexer("foo foo42 foo_42 _foo_42_ foo42 42foo").spanned().collect();
         assert_eq!(
             tokens,
             &[
@@ -25,27 +21,17 @@ mod lexer_tests
     }
 
     #[test]
-    fn test_numbers()
-    {
-        let tokens: Vec<_> = Token::lexer("42 17 170000000000000000000000000000000000000")
-            .spanned()
-            .collect();
+    fn test_numbers() {
+        let tokens: Vec<_> = Token::lexer("42 17 170000000000000000000000000000000000000").spanned().collect();
         assert_eq!(
             tokens,
-            &[
-                (Ok(Token::NumberConst(42)), 0..2),
-                (Ok(Token::NumberConst(17)), 3..5),
-                (Err(LexingError::IntergerOverflow), 6..45),
-            ]
+            &[(Ok(Token::NumberConst(42)), 0..2), (Ok(Token::NumberConst(17)), 3..5), (Err(LexingError::IntergerOverflow), 6..45),]
         )
     }
 
     #[test]
-    fn test_chars()
-    {
-        let tokens: Vec<_> = Token::lexer(r#"'a' '"' '\0' '\\' '\x77' '\xFF' '\g' '\'' '\"'"#)
-            .spanned()
-            .collect();
+    fn test_chars() {
+        let tokens: Vec<_> = Token::lexer(r#"'a' '"' '\0' '\\' '\x77' '\xFF' '\g' '\'' '\"'"#).spanned().collect();
         assert_eq!(
             tokens,
             &[
@@ -54,10 +40,7 @@ mod lexer_tests
                 (Ok(Token::CharConst('\0')), 8..12),
                 (Ok(Token::CharConst('\\')), 13..17),
                 (Ok(Token::CharConst('w')), 18..24),
-                (
-                    Err(LexingError::NonAsciiCharacter(Span { start: 25, end: 31 })),
-                    25..31
-                ),
+                (Err(LexingError::NonAsciiCharacter(Span { start: 25, end: 31 })), 25..31),
                 (Err(LexingError::InvalidEscapeCode), 32..36),
                 (Ok(Token::CharConst('\'')), 37..41),
                 (Ok(Token::CharConst('\"')), 42..46),
@@ -66,53 +49,31 @@ mod lexer_tests
     }
 
     #[test]
-    fn test_strings()
-    {
+    fn test_strings() {
         use internment::Intern;
-        let tokens: Vec<_> =
-            Token::lexer(r#" "Hello World! 42\x77\0\n\"" "this is an invalid ascii char \xFE" "#)
-                .spanned()
-                .collect();
+        let tokens: Vec<_> = Token::lexer(r#" "Hello World! 42\x77\0\n\"" "this is an invalid ascii char \xFE" "#).spanned().collect();
         assert_eq!(
             tokens,
             &[
-                (
-                    Ok(Token::StringConst(Intern::new(
-                        "Hello World! 42w\0\n\"".to_owned()
-                    ))),
-                    1..28
-                ),
-                (
-                    Err(LexingError::NonAsciiCharacter(Span { start: 59, end: 63 })),
-                    29..65
-                ),
+                (Ok(Token::StringConst(Intern::new("Hello World! 42w\0\n\"".to_owned()))), 1..28),
+                (Err(LexingError::NonAsciiCharacter(Span { start: 59, end: 63 })), 29..65),
             ]
         )
     }
 
     #[test]
-    fn test_comments()
-    {
-        let tokens: Vec<_> = Token::lexer(" 42 (*....\n ***\n iuigu 76..*) 17 -- single \n 42")
-            .spanned()
-            .collect();
+    fn test_comments() {
+        let tokens: Vec<_> = Token::lexer(" 42 (*....\n ***\n iuigu 76..*) 17 -- single \n 42").spanned().collect();
 
         assert_eq!(
             tokens,
-            &[
-                (Ok(Token::NumberConst(42)), 1..3),
-                (Ok(Token::NumberConst(17)), 30..32),
-                (Ok(Token::NumberConst(42)), 45..47),
-            ]
+            &[(Ok(Token::NumberConst(42)), 1..3), (Ok(Token::NumberConst(17)), 30..32), (Ok(Token::NumberConst(42)), 45..47),]
         );
     }
 
     #[test]
-    fn test_operators()
-    {
-        let tokens: Vec<_> = Token::lexer(" + - * / % [] () {} == != > <= & | = , ; :")
-            .spanned()
-            .collect();
+    fn test_operators() {
+        let tokens: Vec<_> = Token::lexer(" + - * / % [] () {} == != > <= & | = , ; :").spanned().collect();
 
         assert_eq!(
             tokens,
@@ -143,12 +104,8 @@ mod lexer_tests
     }
 
     #[test]
-    fn test_keywords()
-    {
-        let tokens: Vec<_> =
-            Token::lexer("byte else false if int proc reference return while true")
-                .spanned()
-                .collect();
+    fn test_keywords() {
+        let tokens: Vec<_> = Token::lexer("byte else false if int proc reference return while true").spanned().collect();
 
         assert_eq!(
             tokens,

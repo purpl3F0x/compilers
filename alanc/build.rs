@@ -33,16 +33,7 @@ fn main() -> shadow_rs::SdResult<()> {
     files
         .filter_map(|res| res.ok())
         .map(|dir_entry| dir_entry.path())
-        .filter_map(|path| {
-            if path
-                .extension()
-                .map_or(false, |ext| (ext == "c" || ext == "h"))
-            {
-                Some(path)
-            } else {
-                None
-            }
-        })
+        .filter_map(|path| if path.extension().map_or(false, |ext| (ext == "c" || ext == "h")) { Some(path) } else { None })
         .for_each(|f| print!("cargo:rerun-if-changed={}\n", f.display()));
 
     //* Run shadow
