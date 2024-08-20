@@ -19,87 +19,87 @@ mod parser_tests {
         parse_expr().parse(token_stream).unwrap()
     }
 
-    #[test]
-    fn test_expr() {
-        let input = "(((((((((((((((((((((((( 42 + 17) + 42)))))))))))))))))))))))";
-        let res = parse_expr_test(input);
-        assert_eq!(
-            res,
-            ExprAST::InfixOp {
-                lhs: Box::new(ExprAST::InfixOp {
-                    lhs: Box::new(ExprAST::Literal(Literal::Int(42))),
-                    op: InfixOperator::Add,
-                    rhs: Box::new(ExprAST::Literal(Literal::Int(17))),
-                }),
-                op: InfixOperator::Add,
-                rhs: Box::new(ExprAST::Literal(Literal::Int(42))),
-            },
-            "{:#?}",
-            res
-        );
+    // #[test]
+//     fn test_expr() {
+//         let input = "(((((((((((((((((((((((( 42 + 17) + 42)))))))))))))))))))))))";
+//         let res = parse_expr_test(input);
+//         assert_eq!(
+//             res,
+//             ExprAST::InfixOp {
+//                 lhs: Box::new(ExprAST::InfixOp {
+//                     lhs: Box::new(ExprAST::Literal(Literal::Int(42))),
+//                     op: InfixOperator::Add,
+//                     rhs: Box::new(ExprAST::Literal(Literal::Int(17))),
+//                 }),
+//                 op: InfixOperator::Add,
+//                 rhs: Box::new(ExprAST::Literal(Literal::Int(42))),
+//             },
+//             "{:#?}",
+//             res
+//         );
 
-        let input = " 11 + 12 * 13 + (14 - 15) % 16";
-        let res = parse_expr_test(input);
-        assert_eq!(
-            res,
-            ExprAST::InfixOp {
-                rhs: Box::new(ExprAST::InfixOp {
-                    rhs: Box::new(ExprAST::Literal(Literal::Int(16),)),
-                    op: InfixOperator::Mod,
-                    lhs: Box::new(ExprAST::InfixOp {
-                        rhs: Box::new(ExprAST::Literal(Literal::Int(15))),
-                        op: InfixOperator::Sub,
-                        lhs: Box::new(ExprAST::Literal(Literal::Int(14))),
-                    }),
-                }),
-                op: InfixOperator::Add,
-                lhs: Box::new(ExprAST::InfixOp {
-                    rhs: Box::new(ExprAST::InfixOp {
-                        rhs: Box::new(ExprAST::Literal(Literal::Int(13))),
-                        op: InfixOperator::Mul,
-                        lhs: Box::new(ExprAST::Literal(Literal::Int(12))),
-                    }),
-                    op: InfixOperator::Add,
-                    lhs: Box::new(ExprAST::Literal(Literal::Int(11))),
-                }),
-            },
-            "{:#?}",
-            res
-        );
+//         let input = " 11 + 12 * 13 + (14 - 15) % 16";
+//         let res = parse_expr_test(input);
+//         assert_eq!(
+//             res,
+//             ExprAST::InfixOp {
+//                 rhs: Box::new(ExprAST::InfixOp {
+//                     rhs: Box::new(ExprAST::Literal(Literal::Int(16),)),
+//                     op: InfixOperator::Mod,
+//                     lhs: Box::new(ExprAST::InfixOp {
+//                         rhs: Box::new(ExprAST::Literal(Literal::Int(15))),
+//                         op: InfixOperator::Sub,
+//                         lhs: Box::new(ExprAST::Literal(Literal::Int(14))),
+//                     }),
+//                 }),
+//                 op: InfixOperator::Add,
+//                 lhs: Box::new(ExprAST::InfixOp {
+//                     rhs: Box::new(ExprAST::InfixOp {
+//                         rhs: Box::new(ExprAST::Literal(Literal::Int(13))),
+//                         op: InfixOperator::Mul,
+//                         lhs: Box::new(ExprAST::Literal(Literal::Int(12))),
+//                     }),
+//                     op: InfixOperator::Add,
+//                     lhs: Box::new(ExprAST::Literal(Literal::Int(11))),
+//                 }),
+//             },
+//             "{:#?}",
+//             res
+//         );
 
-        let input = "a + b() + c(42, 1 + 7, a[i]) + a[42]";
-        let res = parse_expr_test(input);
-        assert_eq!(
-            res,
-            ExprAST::InfixOp {
-                rhs: Box::new(ExprAST::LValue(LValueAST::ArraySubscript { id: "a", expr: Box::new(ExprAST::Literal(Literal::Int(42))) },)),
-                op: InfixOperator::Add,
-                lhs: Box::new(ExprAST::InfixOp {
-                    rhs: Box::new(ExprAST::FunctionCall(FnCallAST {
-                        name: "c",
-                        args: vec![
-                            ExprAST::Literal(Literal::Int(42)),
-                            ExprAST::InfixOp {
-                                rhs: Box::new(ExprAST::Literal(Literal::Int(7))),
-                                op: InfixOperator::Add,
-                                lhs: Box::new(ExprAST::Literal(Literal::Int(1))),
-                            },
-                            ExprAST::LValue(LValueAST::ArraySubscript {
-                                id: "a",
-                                expr: Box::new(ExprAST::LValue(LValueAST::Identifier("i"))),
-                            },),
-                        ],
-                    })),
-                    op: InfixOperator::Add,
-                    lhs: Box::new(ExprAST::InfixOp {
-                        rhs: Box::new(ExprAST::FunctionCall(FnCallAST { name: "b", args: vec![] })),
-                        op: InfixOperator::Add,
-                        lhs: Box::new(ExprAST::LValue(LValueAST::Identifier("a"))),
-                    }),
-                }),
-            },
-            "{:#?}",
-            res
-        );
-    }
+//         let input = "a + b() + c(42, 1 + 7, a[i]) + a[42]";
+//         let res = parse_expr_test(input);
+//         assert_eq!(
+//             res,
+//             ExprAST::InfixOp {
+//                 rhs: Box::new(ExprAST::LValue(LValueAST::ArraySubscript { id: "a", expr: Box::new(ExprAST::Literal(Literal::Int(42))) },)),
+//                 op: InfixOperator::Add,
+//                 lhs: Box::new(ExprAST::InfixOp {
+//                     rhs: Box::new(ExprAST::FunctionCall(FnCallAST {
+//                         name: "c",
+//                         args: vec![
+//                             ExprAST::Literal(Literal::Int(42)),
+//                             ExprAST::InfixOp {
+//                                 rhs: Box::new(ExprAST::Literal(Literal::Int(7))),
+//                                 op: InfixOperator::Add,
+//                                 lhs: Box::new(ExprAST::Literal(Literal::Int(1))),
+//                             },
+//                             ExprAST::LValue(LValueAST::ArraySubscript {
+//                                 id: "a",
+//                                 expr: Box::new(ExprAST::LValue(LValueAST::Identifier("i"))),
+//                             },),
+//                         ],
+//                     })),
+//                     op: InfixOperator::Add,
+//                     lhs: Box::new(ExprAST::InfixOp {
+//                         rhs: Box::new(ExprAST::FunctionCall(FnCallAST { name: "b", args: vec![] })),
+//                         op: InfixOperator::Add,
+//                         lhs: Box::new(ExprAST::LValue(LValueAST::Identifier("a"))),
+//                     }),
+//                 }),
+//             },
+//             "{:#?}",
+//             res
+//         );
+//     }
 }

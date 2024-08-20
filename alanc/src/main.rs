@@ -90,11 +90,14 @@ fn main() {
         println!("exiting...");
         exit(1);
     }
-    //* Run Sementic
-    // todo: implement semantic analysis
 
     //* Compile the AST
     let top = tokens.unwrap();
+
+    //* Dump AST ??
+    if args.dump_ast {
+        println!("{}, tokens: {:#?}", src_file_name, top);
+    }
 
     // Create llvm context
     let mut context = cgen::Context::create();

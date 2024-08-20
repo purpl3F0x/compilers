@@ -86,6 +86,10 @@ pub struct Args {
     #[arg(value_enum, short = 'O')]
     pub optimize: bool,
 
+    /// Dump AST to stdout
+    #[arg(long = "dump-ast")]
+    pub dump_ast: bool,
+
     /// Read program from stdin, and produce output code to stdout.
     #[arg(short = 'f')]
     pub stdio: bool,

@@ -7,15 +7,21 @@ use super::*;
 // todo: make AST printer
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Type {
+pub enum TypeKind {
     // Primitive Types
     Int,
     Byte,
     Void,
     // Array Types
-    Array(Box<Type>),
+    Array(Box<TypeKind>),
     // Reference Types
-    Ref(Box<Type>),
+    Ref(Box<TypeKind>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Type {
+    pub kind: TypeKind,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -61,7 +67,7 @@ pub enum LValueAST<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ExprAST<'a> {
+pub enum ExprKind<'a> {
     Error,
 
     Literal(Literal),
@@ -74,6 +80,12 @@ pub enum ExprAST<'a> {
     InfixOp { lhs: Box<ExprAST<'a>>, op: InfixOperator, rhs: Box<ExprAST<'a>> },
 
     FunctionCall(FnCallAST<'a>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExprAST<'a> {
+    pub span: Span,
+    pub kind: ExprKind<'a>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -113,13 +125,22 @@ pub enum StatementAST<'a> {
 pub struct VarDefAST<'a> {
     pub name: &'a str,
     pub type_: Type,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ArrayDefAST<'a> {
+    pub name: &'a str,
+    pub type_: Type,
+    pub size: IntType,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum LocalDefinitionAST<'a> {
     FunctionDef(FunctionAST<'a>),
-    VarDef { name: &'a str, type_: Type },
-    ArrayDef { name: &'a str, type_: Type, size: IntType },
+    VarDef(VarDefAST<'a>),
+    ArrayDef(ArrayDefAST<'a>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -130,12 +151,18 @@ pub struct FunctionAST<'a> {
     pub params: Vec<VarDefAST<'a>>,
     pub locals: Vec<LocalDefinitionAST<'a>>,
     pub body: Vec<StatementAST<'a>>,
+
+    /// The span of the whole function, can derive the span of the body by subtracting the span of the signature
+    pub span: Span,
+    /// The span of the signature of the function
+    pub signature_span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FnCallAST<'a> {
     pub name: &'a str,
     pub args: Vec<ExprAST<'a>>,
+    pub span: Span,
 }
 
 impl fmt::Display for InfixOperator {

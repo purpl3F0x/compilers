@@ -152,7 +152,7 @@ impl<'ctx> Compiler<'ctx> {
         self.load_stdlib()?;
 
         //* Manually add the main function, to make sure ia has name of main
-        if program.r_type != Type::Void {
+        if program.r_type.kind != TypeKind::Void {
             return Err(IRError::String("Top level function must return proc".to_string()));
         }
         if program.params.len() != 0 {
@@ -251,19 +251,19 @@ impl<'ctx> Compiler<'ctx> {
     //*     Private Methods      *//
     //* ------------------------ *//
 
-    /// Comverts [ast::Type](super::ast::Type) to [IRType]
-    fn get_irtype(&self, type_: &Type) -> IRType {
+    /// Comverts [ast::TypeKind](super::ast::TypeKind) to [IRType]
+    fn get_irtype(&self, type_: &TypeKind) -> IRType {
         match type_ {
-            Type::Int => IRType::Int,
-            Type::Byte => IRType::Byte,
-            Type::Void => IRType::Void,
-            Type::Array(ty) => {
+            TypeKind::Int => IRType::Int,
+            TypeKind::Byte => IRType::Byte,
+            TypeKind::Void => IRType::Void,
+            TypeKind::Array(ty) => {
                 // todo: this needs checking
                 //todo: also we know the size of the arrays
                 // todo!("arrays are not implemented yet")
                 self.get_irtype(&ty).into_array_type(0)
             }
-            Type::Ref(ty) => self.get_irtype(&ty).into_reference_type(),
+            TypeKind::Ref(ty) => self.get_irtype(&ty).into_reference_type(),
         }
     }
 
@@ -291,24 +291,24 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    /// Convers from [inkwell::types::AnyTypeEnum] to [ast::Type](super::ast::Type)
-    fn type_to_any_type(&self, ty: &Type) -> AnyTypeEnum<'ctx> {
+    /// Convers from [inkwell::types::AnyTypeEnum] to [ast::TypeKind](super::ast::TypeKind)
+    fn type_to_any_type(&self, ty: &TypeKind) -> AnyTypeEnum<'ctx> {
         match ty {
-            Type::Int => self.int_type.into(),
-            Type::Byte => self.char_type.into(),
-            Type::Void => self.proc_type.into(),
+            TypeKind::Int => self.int_type.into(),
+            TypeKind::Byte => self.char_type.into(),
+            TypeKind::Void => self.proc_type.into(),
             _ => todo!(),
         }
     }
 
-    /// Converts from [ast::Type](super::ast::Type) to [inkwell::types::BasicTypeEnum]
-    fn type_to_basic_type(&self, ty: &Type) -> BasicTypeEnum<'ctx> {
+    /// Converts from [ast::TypeKind](super::ast::TypeKind) to [inkwell::types::BasicTypeEnum]
+    fn type_to_basic_type(&self, ty: &TypeKind) -> BasicTypeEnum<'ctx> {
         match ty {
-            Type::Int => self.int_type.into(),
-            Type::Byte => self.char_type.into(),
-            Type::Void => panic!("Void type is not a basic type"), // todo: fix this, so it can return result ??
-            Type::Ref(_ty) => self.ptr_type.into(),
-            Type::Array(_ty) => self.ptr_type.into(),
+            TypeKind::Int => self.int_type.into(),
+            TypeKind::Byte => self.char_type.into(),
+            TypeKind::Void => panic!("Void type is not a basic type"), // todo: fix this, so it can return result ??
+            TypeKind::Ref(_ty) => self.ptr_type.into(),
+            TypeKind::Array(_ty) => self.ptr_type.into(),
         }
     }
 
@@ -379,15 +379,15 @@ impl<'ctx> Compiler<'ctx> {
 
     /// Generate IR for an [ExprAST]
     fn cgen_expresion(&mut self, expr: &'ctx ExprAST) -> IRResult<(BasicValueEnum<'ctx>, IRType)> {
-        match expr {
-            ExprAST::Error => Err(IRError::UnknownError),
+        match &expr.kind {
+            ExprKind::Error => Err(IRError::UnknownError),
 
-            ExprAST::Literal(lit) => {
+            ExprKind::Literal(ref lit) => {
                 let lit = self.cgen_literal(lit)?;
                 Ok((lit.0.as_basic_value_enum(), lit.1))
             }
 
-            ExprAST::InfixOp { lhs, op, rhs } => {
+            ExprKind::InfixOp { ref lhs, op, ref rhs } => {
                 let (lhs, lhs_ty) = self.cgen_expresion(lhs)?;
                 let (rhs, rhs_ty) = self.cgen_expresion(rhs)?;
 
@@ -452,7 +452,7 @@ impl<'ctx> Compiler<'ctx> {
                     lhs_ty, // should be the same as rhs_ty
                 ))
             }
-            ExprAST::PrefixOp { op, expr } => {
+            ExprKind::PrefixOp { op, ref expr } => {
                 let (expr, expr_ty) = self.cgen_expresion(expr)?;
 
                 let expr = self.cgen_int_value_or_load(expr, &expr_ty)?;
@@ -472,12 +472,12 @@ impl<'ctx> Compiler<'ctx> {
                     expr_ty,
                 ))
             }
-            ExprAST::LValue(lval) => {
+            ExprKind::LValue(ref lval) => {
                 let LValueEntry { ptr, ty } = self.cgen_lvalue_ptr(lval)?;
                 Ok((ptr.as_basic_value_enum(), ty))
             }
 
-            ExprAST::FunctionCall(fn_call) => {
+            ExprKind::FunctionCall(ref fn_call) => {
                 let (fn_value, fn_type) = self.cgen_fn_call(fn_call)?;
                 if fn_type.is_void() {
                     Err(IRError::String("Function call does not return a value".to_string()))
@@ -657,7 +657,8 @@ impl<'ctx> Compiler<'ctx> {
         //* Practically we could save the ptr in the symbol table, when building the function
         //* But this is safer, and prefered for now
         if let Some(captures) = _func_captures {
-            for (lval, lval_ty) in captures.into_iter() {
+            for (lval, _lval_ty) in captures.into_iter() {
+                // ! this needs some furter checking for arrays and nested references
                 let capture_ptr = self
                     .lvalue_symbol_table
                     .get_from_last(lval)
@@ -900,16 +901,16 @@ impl<'ctx> Compiler<'ctx> {
             // todo: check for duplicates
             // ? solved with try_insert ?
             match local {
-                LocalDefinitionAST::VarDef { name, type_ } => {
-                    let ty = self.get_irtype(type_);
+                LocalDefinitionAST::VarDef(VarDefAST { name, type_, span: _ }) => {
+                    let ty = self.get_irtype(& type_.kind);
                     let ptr = self.builder.build_alloca(self.from_irtype(&ty).into_int_type(), name)?;
 
                     self.lvalue_symbol_table
                         .try_insert(name, LValueEntry::new(ptr, ty))
                         .map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
                 }
-                LocalDefinitionAST::ArrayDef { name, type_, size } => {
-                    let ty = self.get_irtype(type_);
+                LocalDefinitionAST::ArrayDef(ArrayDefAST { name, type_, size, span: _ }) => {
+                    let ty = self.get_irtype(&type_.kind);
                     let name = name.borrow();
                     let ir_type = ty.into_array_type(*size);
                     let size = self.int_type.const_int(*size as u64, false);
@@ -954,9 +955,9 @@ impl<'ctx> Compiler<'ctx> {
             result.remove(&param.name);
         }
         for local in locals {
-            if let LocalDefinitionAST::VarDef { name, type_: _ } = local {
+            if let LocalDefinitionAST::VarDef(VarDefAST { name, type_: _, span: _ }) = local {
                 result.remove(name);
-            } else if let LocalDefinitionAST::ArrayDef { name, type_: _, size: _ } = local {
+            } else if let LocalDefinitionAST::ArrayDef(ArrayDefAST { name, type_: _, size: _, span: _ }) = local {
                 result.remove(name);
             }
         }
@@ -974,11 +975,11 @@ impl<'ctx> Compiler<'ctx> {
         //* ------------------------ *//
         //* Create function protoype *//
         //* ------------------------ *//
-        let return_type = self.type_to_any_type(&func.r_type);
+        let return_type = self.type_to_any_type(&func.r_type.kind);
         //* Build function parameters
         let mut param_types: Vec<BasicMetadataTypeEnum> = Vec::with_capacity(func.params.len());
         for param in &func.params {
-            param_types.push(self.type_to_basic_type(&param.type_).into());
+            param_types.push(self.type_to_basic_type(&param.type_.kind).into());
         }
         // In addition to the parameters, we need to pass the captures
 
@@ -1016,7 +1017,7 @@ impl<'ctx> Compiler<'ctx> {
 
             param.set_name(arg.name);
 
-            let ir_type = self.get_irtype(&arg.type_);
+            let ir_type = self.get_irtype(&arg.type_.kind);
 
             let param_ptr = self.builder.build_alloca(param.get_type(), format!("{}.addr", arg.name).as_str())?;
 
@@ -1075,7 +1076,7 @@ impl<'ctx> Compiler<'ctx> {
 
         //* Insert function into functions scope
         self.function_symbol_table
-            .try_insert(name, FunctionEntry::new(function, self.get_irtype(&func.r_type), param_ir_types, symbol_entry_capture_list))
+            .try_insert(name, FunctionEntry::new(function, self.get_irtype(&func.r_type.kind), param_ir_types, symbol_entry_capture_list))
             .map_err(|_| IRError::String(format!(" multiple functions with name of' {}'", name)))?;
 
         self.builder.position_at_end(block);

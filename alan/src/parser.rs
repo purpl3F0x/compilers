@@ -41,7 +41,7 @@ where
 
     let call = ident
         .then(items.delimited_by(just(Token::ParentheseisOpen), just(Token::ParentheseisClose)))
-        .map(|(name, args)| FnCallAST { name, args })
+        .map_with(|(name, args), e| FnCallAST { name, args, span: e.span() })
         .labelled("function call");
     call
 }
@@ -52,9 +52,10 @@ where
 {
     recursive(|expr| {
         let literal = select! {
-            Token::NumberConst(x) => ExprAST::Literal(Literal::Int(x)),
-            Token::CharConst(c) => ExprAST::Literal(Literal::Byte(c)),
+            Token::NumberConst(x) => ExprKind::Literal(Literal::Int(x)),
+            Token::CharConst(c) => ExprKind::Literal(Literal::Byte(c)),
         }
+        .map_with(|kind, e| ExprAST { kind, span: e.span() })
         .labelled("literal");
 
         let ident = select! {
@@ -68,7 +69,7 @@ where
         // Function calls have very high precedence so we prioritise them
         let call = ident
             .then(items.delimited_by(just(Token::ParentheseisOpen), just(Token::ParentheseisClose)))
-            .map(|(name, args)| FnCallAST { name, args })
+            .map_with(|(name, args), e| FnCallAST { name, args, span: e.span() })
             .labelled("function call");
 
         let subscript = ident
@@ -79,9 +80,13 @@ where
             Token::StringConst(s) => LValueAST::String(s),
         };
 
-        let lvalue = string_const.or(subscript).or(ident.clone().map(LValueAST::Identifier)).map(ExprAST::LValue).labelled("l-value");
+        let lvalue = string_const
+            .or(subscript)
+            .or(ident.clone().map(LValueAST::Identifier))
+            .map_with(|kind, e| ExprAST { kind: ExprKind::LValue(kind), span: e.span() })
+            .labelled("l-value");
 
-        let fn_call_into_expr = call.map(ExprAST::FunctionCall);
+        let fn_call_into_expr = call.map_with(|call, e| ExprAST { kind: ExprKind::FunctionCall(call), span: e.span() });
 
         let atom = literal
             // Atoms can also just be normal expressions, but surrounded with parentheses
@@ -91,7 +96,7 @@ where
                 Token::ParentheseisOpen,
                 Token::ParentheseisClose,
                 [(Token::BraceOpen, Token::BraceClose), (Token::BracketOpen, Token::BracketClose)],
-                |_| (ExprAST::Error),
+                |_| (ExprAST { kind: ExprKind::Error, span: Span::new(0, 0) }),
             )))
             .or(fn_call_into_expr)
             .or(lvalue)
@@ -102,9 +107,9 @@ where
             Token::Minus => PrefixOperator::Minus,
         }
         .repeated()
-        .foldr(atom, |op, rhs| ExprAST::PrefixOp { op, expr: Box::new(rhs) });
+        .foldr_with(atom, |op: PrefixOperator, rhs, e| ExprAST { kind: ExprKind::PrefixOp { op, expr: Box::new(rhs) }, span: e.span() });
 
-        let mul = prefix.clone().foldl(
+        let mul = prefix.clone().foldl_with(
             (select! {
                 Token::Mul => InfixOperator::Mul,
                 Token::Div => InfixOperator::Div,
@@ -112,17 +117,17 @@ where
             })
             .then(prefix)
             .repeated(),
-            |lhs, (op, rhs)| ExprAST::InfixOp { lhs: Box::new(lhs), op, rhs: Box::new(rhs) },
+            |lhs, (op, rhs), e| ExprAST { kind: ExprKind::InfixOp { lhs: Box::new(lhs), op, rhs: Box::new(rhs) }, span: e.span() },
         );
 
-        let sum = mul.clone().foldl(
+        let sum = mul.clone().foldl_with(
             (select! {
                 Token::Plus => InfixOperator::Add,
                 Token::Minus => InfixOperator::Sub,
             })
             .then(mul)
             .repeated(),
-            |lhs, (op, rhs)| ExprAST::InfixOp { lhs: Box::new(lhs), op, rhs: Box::new(rhs) },
+            |lhs, (op, rhs), e| ExprAST { kind: ExprKind::InfixOp { lhs: Box::new(lhs), op, rhs: Box::new(rhs) }, span: e.span() },
         );
 
         sum.labelled("expression").as_context()
@@ -286,20 +291,24 @@ where
         .labelled("identifier");
 
         let data_type = select! {
-            Token::Int => Type::Int,
-            Token::Byte => Type::Byte,
+            Token::Int => TypeKind::Int,
+            Token::Byte => TypeKind::Byte,
         }
         .labelled("data-type");
 
-        let ftype =
-            data_type.then_ignore(just(Token::BracketOpen).then(just(Token::BracketClose))).map(|t| Type::Array(Box::new(t))).or(data_type);
+        let data_type_mapped = data_type.map_with(|type_, e| (Type { kind: type_, span: e.span() }));
+
+        let ftype = data_type
+            .then_ignore(just(Token::BracketOpen).then(just(Token::BracketClose)))
+            .map_with(|t, e| Type { kind: TypeKind::Array(Box::new(t)), span: e.span() })
+            .or(data_type_mapped);
 
         let parameters_type = just(Token::Ref)
             .or_not()
             .then(ftype)
             .clone()
-            .map(|(r, type_)| match r {
-                Some(_) => Type::Ref(Box::new(type_)),
+            .map_with(|(r, type_), e| match r {
+                Some(_) => Type { kind: TypeKind::Ref(Box::new(type_.kind)), span: e.span() },
                 None => type_,
             })
             .labelled("parameter type");
@@ -308,7 +317,7 @@ where
             .clone()
             .then_ignore(just(Token::Colon))
             .then(parameters_type)
-            .map(|(name, type_)| VarDefAST { name, type_ })
+            .map_with(|(name, type_), e| VarDefAST { name, type_, span: e.span() })
             .labelled("function parameter");
 
         let fparams = fparam
@@ -319,19 +328,20 @@ where
 
         let r_type = data_type
             .or(select! {
-                    Token::Proc => Type::Void,
+                    Token::Proc => TypeKind::Void,
             })
+            .map_with(|type_, e| Type { kind: type_, span: e.span() })
             .labelled("return type");
 
         let local_var_def = ident
             .clone()
             .then_ignore(just(Token::Colon))
-            .then(data_type)
+            .then(data_type_mapped)
             .then(select! {Token::NumberConst(size)=>size}.delimited_by(just(Token::BracketOpen), just(Token::BracketClose)).or_not())
             .then_ignore(just(Token::SemiColon))
-            .map(|((name, type_), size)| match size {
-                Some(size) => LocalDefinitionAST::ArrayDef { name, type_, size },
-                None => LocalDefinitionAST::VarDef { name, type_ },
+            .map_with(|((name, type_), size), e| match size {
+                Some(size) => LocalDefinitionAST::ArrayDef(ArrayDefAST { name, type_, size, span: e.span() }),
+                None => LocalDefinitionAST::VarDef(VarDefAST { name, type_, span: e.span() }),
             });
 
         let local_def = local_var_def.or(func.map(LocalDefinitionAST::FunctionDef));
@@ -342,9 +352,18 @@ where
             .then(fparams)
             .then_ignore(just(Token::Colon))
             .then(r_type)
+            .map_with(|((name, params), r_type), e| (name, params, r_type, e.span()))
             .then(locals)
             .then(parse_compont_stmt())
-            .map(|((((name, params), r_type), locals), body)| FunctionAST { name, r_type, params, body, locals });
+            .map_with(|(((name, params, r_type, signature_span), locals), body), e| FunctionAST {
+                name,
+                r_type,
+                params,
+                body,
+                locals,
+                signature_span,
+                span: e.span(),
+            });
 
         func_def.labelled("function definition").as_context()
     })
