@@ -105,8 +105,6 @@ pub enum ConditionAST<'a> {
 pub enum StatementAST<'a> {
     Error,
 
-    Null,
-
     Assignment { lvalue: LValueAST<'a>, expr: ExprAST<'a> },
 
     Expr(ExprAST<'a>),

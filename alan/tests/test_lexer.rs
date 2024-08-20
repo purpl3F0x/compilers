@@ -56,7 +56,7 @@ mod lexer_tests {
             tokens,
             &[
                 (Ok(Token::StringConst(Intern::new("Hello World! 42w\0\n\"".to_owned()))), 1..28),
-                (Err(LexingError::NonAsciiCharacter(Span { start: 59, end: 63 })), 29..65),
+                (Err(LexingError::NonAsciiCharacter(Span { start: 60, end: 64 })), 29..65),
             ]
         )
     }

@@ -206,7 +206,7 @@ where
     recursive(|stmt| {
         let stmt_end = just(Token::SemiColon).labelled(";");
 
-        let null_stmt = stmt_end.clone().map(|_| StatementAST::Null).labelled(";");
+        let null_stmt = stmt_end.clone().ignored().repeated();
 
         let assigment = parse_lvalue()
             .then_ignore(just(Token::Assign))
@@ -257,7 +257,15 @@ where
             .map(|expr| StatementAST::Return(expr))
             .labelled("return statement");
 
-        assigment.or(compount_stmt_inner).or(call).or(if_else).or(while_).or(return_).or(null_stmt).labelled("statement").as_context()
+        assigment
+            .or(compount_stmt_inner)
+            .or(call)
+            .or(if_else)
+            .or(while_)
+            .or(return_)
+            .padded_by(null_stmt)
+            .labelled("statement")
+            .as_context()
     })
 }
 

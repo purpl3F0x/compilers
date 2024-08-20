@@ -888,7 +888,6 @@ impl<'ctx> Compiler<'ctx> {
                 self.cgen_statments(stmts)?;
             }
             StatementAST::Error => return Err(IRError::UnknownError),
-            StatementAST::Null => {}
         }
 
         Ok(())
@@ -902,7 +901,7 @@ impl<'ctx> Compiler<'ctx> {
             // ? solved with try_insert ?
             match local {
                 LocalDefinitionAST::VarDef(VarDefAST { name, type_, span: _ }) => {
-                    let ty = self.get_irtype(& type_.kind);
+                    let ty = self.get_irtype(&type_.kind);
                     let ptr = self.builder.build_alloca(self.from_irtype(&ty).into_int_type(), name)?;
 
                     self.lvalue_symbol_table
