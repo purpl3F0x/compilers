@@ -43,6 +43,7 @@ name = "alanc"
 version = "0.1.0"
 dependencies = [
  "alan",
+ "ariadne",
  "clap",
  "shadow-rs",
  "yansi",

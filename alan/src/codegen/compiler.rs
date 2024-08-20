@@ -657,13 +657,15 @@ impl<'ctx> Compiler<'ctx> {
         //* Practically we could save the ptr in the symbol table, when building the function
         //* But this is safer, and prefered for now
         if let Some(captures) = _func_captures {
-            for (lval, _ty) in captures.into_iter() {
+            for (lval, lval_ty) in captures.into_iter() {
                 let capture_ptr = self
                     .lvalue_symbol_table
                     .get_from_last(lval)
                     .ok_or_else(|| IRError::String(format!("Capture '{}' not found in the current scope", lval)))?;
 
-                args.push(capture_ptr.ptr.into());
+                let arg = capture_ptr.ptr;
+
+                args.push(arg.into());
             }
         }
 

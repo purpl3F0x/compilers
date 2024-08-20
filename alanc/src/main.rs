@@ -1,6 +1,9 @@
 mod arg_parser;
 use arg_parser::*;
 
+mod error_printer;
+use error_printer::*;
+
 use alan::codegen as cgen;
 use alan::lexer::*;
 use alan::parser::parse_function;
@@ -27,7 +30,7 @@ fn main() {
     let args = Args::parse();
 
     let mut src_buffer = String::new();
-    let mut src_file_name: Option<String> = None;
+    let mut src_file_name: String = String::new();
 
     // let mode = args.mode();
 
@@ -41,7 +44,7 @@ fn main() {
         src_buffer = std::fs::read_to_string(&src_file).unwrap_or_else(|err| {
             handle_io_error(err, src_file.as_path().to_str());
         });
-        src_file_name = Some(src_file.display().to_string());
+        src_file_name = src_file.display().to_string();
 
         // Create output files
         // Use set_extension instead of with_extension, so it doesn't produce ..imm/.asm in files without extension
@@ -53,11 +56,13 @@ fn main() {
         imm_file_name = imm_file_path.display().to_string();
         asm_file_name = asm_file_path.display().to_string();
     } else if args.stdio {
+        src_file_name = "stdin".to_string();
         println!("Reading from stdin and writing to stdout");
         stdin().read_to_string(&mut src_buffer).unwrap_or_else(|err| {
             handle_io_error(err, Some("stdin"));
         });
     } else if args.stdio_intermediate {
+        src_file_name = "stdin".to_string();
         println!("Reading from stdin and writing intermediate code to stdout");
         stdin().read_to_string(&mut src_buffer).unwrap_or_else(|err| {
             handle_io_error(err, Some("stdin"));
@@ -75,13 +80,14 @@ fn main() {
     // * Parse
     let (tokens, errs) = parse_function().parse(token_stream).into_output_errors();
 
-    // * Check for errors
+    // * Check exr errors
     if errs.len() > 0 {
         // todo: use ariadne to print errors
         for e in errs {
-            println!("{:?}", e);
+            print_error(&src_file_name, src_buffer.as_str(), &e);
         }
-        println!("Compilation failed, exiting...");
+
+        println!("exiting...");
         exit(1);
     }
     //* Run Sementic
@@ -93,10 +99,8 @@ fn main() {
     // Create llvm context
     let mut context = cgen::Context::create();
     let mut compiler = cgen::Compiler::new(&mut context);
-    if let Some(src_file_name) = src_file_name {
-        // src_file_name += "42";
-        compiler.set_source_file_name(&src_file_name);
-    }
+
+    compiler.set_source_file_name(&src_file_name);
 
     let res = compiler.compile(&top);
 

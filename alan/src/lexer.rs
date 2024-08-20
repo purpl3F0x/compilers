@@ -21,6 +21,8 @@ pub enum LexingError {
 
     UntermnatedStringLiteral,
 
+    UnterminatedComment,
+
     #[default]
     LexerError,
 }
@@ -29,7 +31,7 @@ pub enum LexingError {
 #[logos(error = LexingError)]
 #[logos(skip r"[ \t\r\n\f]+")]
 #[logos(skip r"--[^\n]*" )] // Signle line comments
-#[logos(skip r"\(\*(?:[^*]|\*[^\)])*\*\)")]
+#[logos(skip r"\(\*(?:[^*]|\*[^\)])*\*\)")] // Multi line comments
 pub enum Token<'input> {
     // Seperators
     #[token("(")]
@@ -143,7 +145,7 @@ pub enum Token<'input> {
     // Number Constants
     #[regex("[0-9]+", |lex| lex.slice().parse())]
     #[regex("[0-9]+[A-Za-z\\\\.]+", |_| Err(LexingError::InvalidInteger) )]
-    // TODO: maybe ?? (?:(?:[\.\+\*\\\=])[\-\+])\d+
+    // todo: maybe ?? (?:(?:[\.\+\*\\\=])[\-\+])\d+
     NumberConst(IntType),
 
     // Charater Constants
@@ -164,6 +166,13 @@ pub enum Token<'input> {
         |_| Err(LexingError::UntermnatedStringLiteral)
     )]
     StringConst(internment::Intern<String>),
+
+
+    #[regex(
+        r"\(\*(?:[^*]|\*[^\)])*",
+        |_| Err(LexingError::UnterminatedComment)
+    )]
+    ErrorComment(LexingError),
 
     Error(LexingError),
 }
@@ -221,7 +230,7 @@ fn string_literal<'input>(lex: &mut Lexer<'input, Token<'input>>) -> Result<inte
                             s.push(n as char)
                         } else {
                             let mut span = lex.span();
-                            span.start += s.len();
+                            span.start += s.len() + 1;
                             span.end = span.start + 4;
                             return Err(LexingError::NonAsciiCharacter(span));
                         }
@@ -250,14 +259,37 @@ impl LexingError {
         use core::mem::size_of;
         match self {
             Self::IntergerOverflow => {
-                format!(
-                    "constant too large for type of Int(int{}), valid range is ({} to {})",
-                    size_of::<IntType>() * 8,
-                    IntType::MIN,
-                    IntType::MAX
-                )
+                format!("constant too large for type of Int(int{})", size_of::<IntType>() * 8,)
             }
-            _ => todo!("LexingError::get_message incomplete"),
+            Self::LexerError => "Unexpected token".to_string(),
+
+            Self::InvalidInteger => "Invalid Integer".to_string(),
+
+            Self::NonAsciiCharacter(_) => "found a invalid ascii character".to_string(),
+
+            Self::EmptyCharLiteral => "Empty Char Literal".to_string(),
+
+            Self::InvalidEscapeCode => "Invalid Escape Code".to_string(),
+
+            Self::UntermnatedStringLiteral => "Unterminated String Literal".to_string(),
+
+            Self::UnterminatedComment => "Unterminated Comment".to_string(),
+        }
+    }
+
+    pub fn get_note(&self) -> Option<String> {
+        match self {
+            Self::InvalidEscapeCode => Some("Valid escape codes are: \\n, \\t, \\r, \\0, \\\\, \\\', \\\"".to_string()),
+
+            Self::UntermnatedStringLiteral => Some("String literals must be terminated with a double quote".to_string()),
+
+            Self::NonAsciiCharacter(_) => Some("Valid ascii characters are smaller than 128 (0x80)".to_string()),
+
+            Self::IntergerOverflow => {
+                use core::mem::size_of;
+                Some(format!("valid range is ({} to {})", IntType::MIN, IntType::MAX))
+            }
+            _ => None,
         }
     }
 }
@@ -304,6 +336,8 @@ impl<'input> fmt::Display for Token<'input> {
             Self::CharConst(c) => write!(f, "{}", c),
             Self::StringConst(s) => write!(f, "\"{}\"", s),
             Self::Error(e) => write!(f, "Error({})", e),
+
+            _ => write!(f, ""),
         }
     }
 }
@@ -319,7 +353,13 @@ impl fmt::Display for LexingError {
 
             LexingError::LexerError => write!(f, "Unexpected token"),
 
-            _ => todo!("fmt::Display for LexingError incomplete"),
+            LexingError::EmptyCharLiteral => write!(f, "Empty Char Literal"),
+
+            LexingError::InvalidEscapeCode => write!(f, "Invalid Escape Code"),
+
+            LexingError::UntermnatedStringLiteral => write!(f, "Unterminated String Literal"),
+
+            LexingError::UnterminatedComment => write!(f, "Unterminated Comment"),
         }
     }
 }
