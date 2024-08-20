@@ -96,7 +96,8 @@ fn main() {
 
     //* Dump AST ??
     if args.dump_ast {
-        println!("{}, tokens: {:#?}", src_file_name, top);
+        println!("{}, tokens: {}", src_file_name, top);
+        exit(0);
     }
 
     // Create llvm context
