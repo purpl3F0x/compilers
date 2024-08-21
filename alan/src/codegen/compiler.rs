@@ -26,15 +26,18 @@ use inkwell::{
 /// Compiler module, responsible for generating LLVM IR from the AST.
 /// Semantic analysis is done along the way, so the IR generation is simpler.
 pub struct Compiler<'ctx> {
-    // LLVM
+    //* LLVM
     context: &'ctx Context,
     builder: Builder<'ctx>,
     module: Module<'ctx>,
     target: TargetMachine,
 
-    // Symbol Tables
+    //* Symbol Tables
+    /// LValue symbol table, holds the variables
     lvalue_symbol_table: Scopes<&'ctx str, LValueEntry<'ctx>>,
+    /// Function symbol table, holds the function definitions
     function_symbol_table: Scopes<&'ctx str, FunctionEntry<'ctx>>,
+    /// The return type of the current function being compiled, update it before statment cgen, so it doesn't get overwritten by a nested function def
     current_function_return_type: IRType,
 
     // Types
@@ -48,6 +51,7 @@ pub struct Compiler<'ctx> {
     // ready to use llvm attributes
     int_reference_attribute: inkwell::attributes::Attribute,
     char_reference_attribute: inkwell::attributes::Attribute,
+    // ? Add dereferencable generator for arrays (optional)
 }
 
 impl<'ctx> Compiler<'ctx> {
@@ -165,7 +169,6 @@ impl<'ctx> Compiler<'ctx> {
         let main_type = self.proc_type.fn_type(&[], false);
         let main_func = self.module.add_function("main", main_type, None);
         let basic_block = self.context.append_basic_block(main_func, "entry");
-        // current_function_return_type already set to void
 
         self.builder.position_at_end(basic_block);
 
@@ -177,10 +180,20 @@ impl<'ctx> Compiler<'ctx> {
         self.builder.position_at_end(basic_block);
 
         //* Generate function body
+        self.current_function_return_type = IRType::Void;
         self.cgen_statements(&program.body)?;
 
-        // Hardcoded return void() function, we have already check it's a proc
-        self.builder.build_return(None)?;
+        //* Check if we need to build are return (hardcoded for main-void function)
+        for bb in main_func.get_basic_blocks() {
+            match bb.get_terminator() {
+                Some(_) => {
+                    continue;
+                }
+                None => {
+                    self.builder.build_return(None)?;
+                }
+            }
+        }
 
         self.basic_pass()
         // Ok(self.module.verify()?)
