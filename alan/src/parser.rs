@@ -140,9 +140,10 @@ where
 {
     recursive(|cond| {
         let bool_literal = select! {
-            Token::True => ConditionAST::BoolConst(true),
-            Token::False => ConditionAST::BoolConst(false),
+            Token::True => ConditionKind::BoolConst(true),
+            Token::False => ConditionKind::BoolConst(false),
         }
+        .map_with(|kind, e| ConditionAST { kind, span: e.span() })
         .labelled("bool const");
 
         let atom = bool_literal
@@ -153,7 +154,7 @@ where
                 Token::ParentheseisOpen,
                 Token::ParentheseisClose,
                 [(Token::BraceOpen, Token::BraceClose), (Token::BracketOpen, Token::BracketClose)],
-                |_| (ConditionAST::Error),
+                |_| (ConditionAST { kind: ConditionKind::Error, span: Span::new(0, 0) }),
             )))
             .boxed();
 
@@ -161,7 +162,7 @@ where
             Token::Not => PrefixOperator::Not,
         }
         .repeated()
-        .foldr(atom, |op, rhs| ConditionAST::PrefixOp { op, expr: Box::new(rhs) });
+        .foldr_with(atom, |op, rhs, e| ConditionAST { kind: ConditionKind::PrefixOp { op, expr: Box::new(rhs) }, span: e.span() });
 
         let compare_op = select! {
             Token::Equals => InfixOperator::Equal,
@@ -171,28 +172,33 @@ where
             Token::GreaterOrEqual => InfixOperator::GreaterOrEqual,
             Token::LessOrEqual => InfixOperator::LessOrEqual,
         };
-        let compare_operations = parse_expr().then(compare_op).then(parse_expr()).map(|((lhs, op), rhs)| ConditionAST::ExprComparison {
-            lhs: Box::new(lhs),
-            op,
-            rhs: Box::new(rhs),
+        let compare_operations = parse_expr().then(compare_op).then(parse_expr()).map_with(|((lhs, op), rhs), e| ConditionAST {
+            kind: ConditionKind::ExprComparison { lhs: Box::new(lhs), op, rhs: Box::new(rhs) },
+            span: e.span(),
         });
 
-        let logic_and = prefix.clone().or(compare_operations.clone()).foldl(
+        let logic_and = prefix.clone().or(compare_operations.clone()).foldl_with(
             (select! {
                 Token::And => InfixOperator::LogicAnd,
             })
             .then(prefix.clone().or(compare_operations))
             .repeated(),
-            |lhs, (op, rhs)| ConditionAST::InfixLogicOp { lhs: Box::new(lhs), op, rhs: Box::new(rhs) },
+            |lhs, (op, rhs), e| ConditionAST {
+                kind: ConditionKind::InfixLogicOp { lhs: Box::new(lhs), op, rhs: Box::new(rhs) },
+                span: e.span(),
+            },
         );
 
-        let logic_or = logic_and.clone().foldl(
+        let logic_or = logic_and.clone().foldl_with(
             (select! {
                 Token::Or => InfixOperator::LogicOr,
             })
             .then(logic_and.clone())
             .repeated(),
-            |lhs, (op, rhs)| ConditionAST::InfixLogicOp { lhs: Box::new(lhs), op, rhs: Box::new(rhs) },
+            |lhs, (op, rhs), e| ConditionAST {
+                kind: ConditionKind::InfixLogicOp { lhs: Box::new(lhs), op, rhs: Box::new(rhs) },
+                span: e.span(),
+            },
         );
 
         logic_or.labelled("condition").as_context()

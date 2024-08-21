@@ -22,3 +22,6 @@ likely_stable = "0.1.2"
 logos = "0.14.0"
 inkwell = { version = "0.5.0", features = ["llvm18-0"] }
 llvm-sys = { package = "llvm-sys", version = "180", features = ["prefer-static"] }
+serde = { version = "1.0.208", features = ["derive"] }
+ptree = {version = "0.5.0", features = ["value"], default-features = false}
+serde-value = "0.7.0"

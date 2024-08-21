@@ -35,6 +35,7 @@ pub struct Compiler<'ctx> {
     // Symbol Tables
     lvalue_symbol_table: Scopes<&'ctx str, LValueEntry<'ctx>>,
     function_symbol_table: Scopes<&'ctx str, FunctionEntry<'ctx>>,
+    current_function_return_type: IRType,
 
     // Types
     int_type: IntType<'ctx>,
@@ -131,6 +132,7 @@ impl<'ctx> Compiler<'ctx> {
 
             lvalue_symbol_table: Scopes::new(),
             function_symbol_table: Scopes::new(),
+            current_function_return_type: IRType::Void,
 
             int_type: int_type,
             char_type: char_type,
@@ -163,6 +165,7 @@ impl<'ctx> Compiler<'ctx> {
         let main_type = self.proc_type.fn_type(&[], false);
         let main_func = self.module.add_function("main", main_type, None);
         let basic_block = self.context.append_basic_block(main_func, "entry");
+        // current_function_return_type already set to void
 
         self.builder.position_at_end(basic_block);
 
@@ -174,7 +177,7 @@ impl<'ctx> Compiler<'ctx> {
         self.builder.position_at_end(basic_block);
 
         //* Generate function body
-        self.cgen_statments(&program.body)?;
+        self.cgen_statements(&program.body)?;
 
         // Hardcoded return void() function, we have already check it's a proc
         self.builder.build_return(None)?;
@@ -680,10 +683,10 @@ impl<'ctx> Compiler<'ctx> {
 
     /// Generate IR for a [ConditionAST]
     fn cgen_condition(&mut self, cond: &'ctx ConditionAST) -> IRResult<IntValue<'ctx>> {
-        match cond {
-            ConditionAST::BoolConst(b) => Ok(self.bool_type.const_int(*b as u64, false)),
+        match &cond.kind {
+            ConditionKind::BoolConst(ref b) => Ok(self.bool_type.const_int(*b as u64, false)),
 
-            ConditionAST::InfixLogicOp { lhs, op, rhs } => {
+            ConditionKind::InfixLogicOp { ref lhs, op, ref rhs } => {
                 let lhs = self.cgen_condition(lhs)?;
                 let rhs = self.cgen_condition(rhs)?;
 
@@ -700,7 +703,7 @@ impl<'ctx> Compiler<'ctx> {
                 }?)
             }
 
-            ConditionAST::PrefixOp { op, expr } => {
+            ConditionKind::PrefixOp { op, ref expr } => {
                 let expr = self.cgen_condition(expr)?;
 
                 Ok(match op {
@@ -709,7 +712,7 @@ impl<'ctx> Compiler<'ctx> {
                 }?)
             }
 
-            ConditionAST::ExprComparison { lhs, op, rhs } => {
+            ConditionKind::ExprComparison { ref lhs, op, ref rhs } => {
                 let (lhs, lhs_ty) = self.cgen_expresion(lhs)?;
                 let (rhs, rhs_ty) = self.cgen_expresion(rhs)?;
 
@@ -736,11 +739,11 @@ impl<'ctx> Compiler<'ctx> {
                 }?)
             }
 
-            ConditionAST::Error => Err(IRError::UnknownError),
+            ConditionKind::Error => Err(IRError::UnknownError),
         }
     }
 
-    fn cgen_statments(&mut self, stmts: &'ctx Vec<StatementAST>) -> IRResult<()> {
+    fn cgen_statements(&mut self, stmts: &'ctx Vec<StatementAST>) -> IRResult<()> {
         for stmt in stmts {
             self.cgen_statement(stmt)?;
             if matches!(stmt, StatementAST::Return(_)) {
@@ -807,10 +810,20 @@ impl<'ctx> Compiler<'ctx> {
 
             StatementAST::Return(expr) => {
                 if let Some(expr) = expr {
-                    let expr_res = self.cgen_expresion(expr)?;
-                    self.builder.build_return(Some(&expr_res.0))?;
+                    let (expr_res, expr_ty) = self.cgen_expresion(expr)?;
+                    if expr_ty != self.current_function_return_type {
+                        return Err(IRError::String(format!(
+                            "Expected a return value of type '{}', got '{}'",
+                            self.current_function_return_type, expr_ty
+                        )));
+                    }
+                    self.builder.build_return(Some(&expr_res))?;
                 } else {
-                    self.builder.build_return(None)?;
+                    if self.current_function_return_type.is_void() {
+                        self.builder.build_return(None)?;
+                    } else {
+                        return Err(IRError::String("Expected a return value".to_string()));
+                    }
                 }
             }
 
@@ -885,7 +898,7 @@ impl<'ctx> Compiler<'ctx> {
             }
 
             StatementAST::Compound(stmts) => {
-                self.cgen_statments(stmts)?;
+                self.cgen_statements(stmts)?;
             }
             StatementAST::Error => return Err(IRError::UnknownError),
         }
@@ -1085,7 +1098,8 @@ impl<'ctx> Compiler<'ctx> {
         self.cgen_locals(&func.locals)?;
 
         //* Generte function body
-        self.cgen_statments(&func.body)?;
+        self.current_function_return_type = self.get_irtype(&func.r_type.kind);
+        self.cgen_statements(&func.body)?;
 
         //* Prepare to leave function
         self.lvalue_symbol_table.pop();

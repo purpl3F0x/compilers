@@ -96,7 +96,10 @@ fn main() {
 
     //* Dump AST ??
     if args.dump_ast {
-        println!("{}, tokens: {}", src_file_name, top);
+        top.print().unwrap_or_else(|e| {
+            handle_io_error(e, Some("failed printing AST"));
+        });
+        
         exit(0);
     }
 
