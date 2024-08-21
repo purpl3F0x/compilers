@@ -99,7 +99,7 @@ fn main() {
         top.print().unwrap_or_else(|e| {
             handle_io_error(e, Some("failed printing AST"));
         });
-        
+
         exit(0);
     }
 

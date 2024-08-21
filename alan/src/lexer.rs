@@ -167,7 +167,6 @@ pub enum Token<'input> {
     )]
     StringConst(internment::Intern<String>),
 
-
     #[regex(
         r"\(\*(?:[^*]|\*[^\)])*",
         |_| Err(LexingError::UnterminatedComment)
