@@ -1,7 +1,6 @@
 #![cfg_attr(debug_assertions, allow(dead_code))]
 
 use core::fmt;
-use std::fmt::Write;
 
 use super::*;
 
