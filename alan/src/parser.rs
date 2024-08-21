@@ -218,7 +218,7 @@ where
             .then_ignore(just(Token::Assign))
             .then(parse_expr())
             .then_ignore(stmt_end.clone())
-            .map(|(lvalue, expr)| StatementAST::Assignment { lvalue, expr })
+            .map_with(|(lvalue, expr), e| StatementAST { kind: StatementKind::Assignment { lvalue, expr }, span: e.span() })
             .boxed()
             .labelled("assigment");
 
@@ -227,27 +227,28 @@ where
             .repeated()
             .collect::<Vec<_>>()
             .delimited_by(just(Token::BraceOpen), just(Token::BraceClose))
-            .map(|stmts| StatementAST::Compound(stmts))
+            .map_with(|stmts, e| StatementAST { kind: StatementKind::Compound(stmts), span: e.span() })
             .recover_with(via_parser(nested_delimiters(
                 Token::BraceOpen,
                 Token::BraceOpen,
                 [(Token::ParentheseisOpen, Token::ParentheseisClose), (Token::BracketOpen, Token::BracketClose)],
-                |_| StatementAST::Error,
+                |_| StatementAST { kind: StatementKind::Error, span: Span::new(0, 0) },
             )))
             .boxed()
             .labelled("compound statement");
 
-        let call = parse_fncall().then_ignore(stmt_end.clone()).map(|call| StatementAST::FunctionCall(call));
+        let call = parse_fncall()
+            .then_ignore(stmt_end.clone())
+            .map_with(|call, e| StatementAST { kind: StatementKind::FunctionCall(call), span: e.span() });
 
         let if_else = recursive(|if_| {
             just(Token::If)
                 .then(parse_condition().delimited_by(just(Token::ParentheseisOpen), just(Token::ParentheseisClose)))
                 .then(stmt.clone())
                 .then(just(Token::Else).ignore_then(stmt.clone().or(if_)).or_not())
-                .map(|(((_, condition), then), else_)| StatementAST::If {
-                    condition,
-                    then: Box::new(then),
-                    else_: else_.map(|v| Box::new(v)),
+                .map_with(|(((_, condition), then), else_), e| StatementAST {
+                    kind: StatementKind::If { condition, then: Box::new(then), else_: else_.map(|v| Box::new(v)) },
+                    span: e.span(),
                 })
         });
 
@@ -255,12 +256,15 @@ where
             .ignored()
             .then(parse_condition().delimited_by(just(Token::ParentheseisOpen), just(Token::ParentheseisClose)))
             .then(stmt.clone())
-            .map(|((_, condition), body)| StatementAST::While { condition, body: Box::new(body) });
+            .map_with(|((_, condition), body), e| StatementAST {
+                kind: StatementKind::While { condition, body: Box::new(body) },
+                span: e.span(),
+            });
 
         let return_ = parse_expr()
             .or_not()
             .delimited_by(just(Token::Return), stmt_end.clone())
-            .map(|expr| StatementAST::Return(expr))
+            .map_with(|expr, e| StatementAST { kind: StatementKind::Return(expr), span: e.span() })
             .labelled("return statement");
 
         assigment
@@ -287,7 +291,7 @@ where
             Token::BraceOpen,
             Token::BraceOpen,
             [(Token::ParentheseisOpen, Token::ParentheseisClose), (Token::BracketOpen, Token::BracketClose)],
-            |_| vec![StatementAST::Error],
+            |_| vec![StatementAST { kind: StatementKind::Error, span: Span::new(0, 0) }],
         )))
         .labelled("compound statement");
 

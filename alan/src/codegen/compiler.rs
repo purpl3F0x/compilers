@@ -746,7 +746,7 @@ impl<'ctx> Compiler<'ctx> {
     fn cgen_statements(&mut self, stmts: &'ctx Vec<StatementAST>) -> IRResult<()> {
         for stmt in stmts {
             self.cgen_statement(stmt)?;
-            if matches!(stmt, StatementAST::Return(_)) {
+            if matches!(stmt.kind, StatementKind::Return(_)) {
                 // ? add a warning if not last statment
                 break;
             }
@@ -756,12 +756,12 @@ impl<'ctx> Compiler<'ctx> {
 
     /// Generate IR for a [StatementAST]
     fn cgen_statement(&mut self, stmt: &'ctx StatementAST) -> IRResult<()> {
-        match stmt {
-            StatementAST::Expr(e) => {
+        match &stmt.kind {
+            StatementKind::Expr(e) => {
                 self.cgen_expresion(e)?;
             }
 
-            StatementAST::Assignment { lvalue, expr } => {
+            StatementKind::Assignment { lvalue, expr } => {
                 if matches!(lvalue, LValueAST::String(_)) {
                     return Err(IRError::String("Cannot assign to a string constant".to_string()));
                 }
@@ -798,7 +798,7 @@ impl<'ctx> Compiler<'ctx> {
                 self.builder.build_store(lval_ptr, expr)?;
             }
 
-            StatementAST::FunctionCall(fn_call) => {
+            StatementKind::FunctionCall(fn_call) => {
                 let (_, fn_value) = self.cgen_fn_call(fn_call)?;
                 if !fn_value.is_void() {
                     return Err(IRError::String(format!(
@@ -808,7 +808,7 @@ impl<'ctx> Compiler<'ctx> {
                 }
             }
 
-            StatementAST::Return(expr) => {
+            StatementKind::Return(expr) => {
                 if let Some(expr) = expr {
                     let (expr_res, expr_ty) = self.cgen_expresion(expr)?;
                     if expr_ty != self.current_function_return_type {
@@ -827,7 +827,7 @@ impl<'ctx> Compiler<'ctx> {
                 }
             }
 
-            StatementAST::If { condition, then, else_ } => {
+            StatementKind::If { condition, then, else_ } => {
                 // todo: chain if else, instead of recurscivly generating the statments to avoid multiple branches
                 let block = self.builder.get_insert_block().unwrap();
                 let current_function = block.get_parent().unwrap();
@@ -871,7 +871,7 @@ impl<'ctx> Compiler<'ctx> {
                 }
             }
 
-            StatementAST::While { condition, body } => {
+            StatementKind::While { condition, body } => {
                 let block = self.builder.get_insert_block().unwrap();
                 let current_function = block.get_parent().unwrap();
 
@@ -897,10 +897,10 @@ impl<'ctx> Compiler<'ctx> {
                 self.builder.position_at_end(while_end);
             }
 
-            StatementAST::Compound(stmts) => {
+            StatementKind::Compound(stmts) => {
                 self.cgen_statements(stmts)?;
             }
-            StatementAST::Error => return Err(IRError::UnknownError),
+            StatementKind::Error => return Err(IRError::UnknownError),
         }
 
         Ok(())

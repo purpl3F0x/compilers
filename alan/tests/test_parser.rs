@@ -241,15 +241,16 @@ mod parser_tests {
                     span: Span::new(88, 101), // Span for "y : int[100]"
                 }),
             ],
-            body: vec![
-                StatementAST::Assignment {
+            body: vec![StatementAST {
+                kind: StatementKind::Assignment {
                     lvalue: LValueAST::Identifier("x"),
                     expr: ExprAST {
                         span: Span::new(178, 180), // Span for "42"
                         kind: ExprKind::Literal(Literal::Int(42)),
                     },
                 },
-            ],
+                span: Span::new(174, 181), // Span for "x = 42;"
+            }],
             span: Span::new(0, 193),          // Span for the entire function
             signature_span: Span::new(0, 54), // Span for the function signature
         };

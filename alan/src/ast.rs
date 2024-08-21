@@ -109,7 +109,7 @@ pub struct ConditionAST<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
-pub enum StatementAST<'a> {
+pub enum StatementKind<'a> {
     Error,
 
     Assignment { lvalue: LValueAST<'a>, expr: ExprAST<'a> },
@@ -127,6 +127,12 @@ pub enum StatementAST<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct StatementAST<'a> {
+    pub span: Span,
+    pub kind: StatementKind<'a>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct VarDefAST<'a> {
     pub name: &'a str,
     pub type_: Type,
@@ -141,7 +147,7 @@ pub struct ArrayDefAST<'a> {
     pub span: Span,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum LocalDefinitionAST<'a> {
     FunctionDef(FunctionAST<'a>),
     VarDef(VarDefAST<'a>),
@@ -252,6 +258,20 @@ impl Serialize for ExprAST<'_> {
     }
 }
 
+impl Serialize for ArrayDefAST<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("ArrayDef", 4)?;
+        state.serialize_field("span", &self.span.to_string())?;
+        state.serialize_field("name", &self.name)?;
+        state.serialize_field("type", &self.type_)?;
+        state.serialize_field("size", &self.size)?;
+        state.end()
+    }
+}
+
 impl Serialize for FnCallAST<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -277,28 +297,29 @@ impl Serialize for ConditionAST<'_> {
     }
 }
 
-// impl Serialize for StatementAST<'_> {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: serde::Serializer,
-//     {
-//         let mut state = serializer.serialize_struct("Statement", 2)?;
-//         // state.serialize_field("kind", &self)?;
-
-//         state.end()
-//     }
-// }
+impl Serialize for StatementAST<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("Statement", 2)?;
+        state.serialize_field("span", &self.span.to_string())?;
+        state.serialize_field("kind", &self.kind)?;
+        state.end()
+    }
+}
 
 impl Serialize for FunctionAST<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("Function", 5)?;
+        let mut state = serializer.serialize_struct("Function", 6)?;
         state.serialize_field("span", &self.span.to_string())?;
         state.serialize_field("name", &self.name)?;
         state.serialize_field("args", &self.params)?;
-        state.serialize_field("return", &self.r_type)?;
+        state.serialize_field("rtype", &self.r_type)?;
+        state.serialize_field("locals", &self.locals)?;
         state.serialize_field("body", &self.body)?;
         state.end()
     }
