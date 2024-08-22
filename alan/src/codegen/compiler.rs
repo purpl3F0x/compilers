@@ -489,7 +489,7 @@ impl<'ctx> Compiler<'ctx> {
                 ))
             }
             ExprKind::LValue(ref lval) => {
-                let LValueEntry { ptr, ty } = self.cgen_lvalue_ptr(lval)?;
+                let LValueEntry { ptr, ty, span: _ } = self.cgen_lvalue_ptr(lval)?;
                 Ok((ptr.as_basic_value_enum(), ty))
             }
 
@@ -506,17 +506,18 @@ impl<'ctx> Compiler<'ctx> {
 
     /// Generate IR for [LValueAST]
     fn cgen_lvalue_ptr(&mut self, lval: &'ctx LValueAST) -> IRResult<LValueEntry<'ctx>> {
-        match lval {
-            LValueAST::String(s) => {
+        match &lval.kind {
+            LValueKind::String(s) => {
                 let str = self.builder.build_global_string_ptr(s, "glob.str")?.as_pointer_value();
 
                 Ok(LValueEntry::new(
                     str,
                     IRType::Array(Box::new(IRType::Byte), (s.len() + 1) as i32), // ! this isn't that correct (maybe string type makes sense ?)
+                    lval.span,
                 ))
             }
 
-            LValueAST::Identifier(id) => {
+            LValueKind::Identifier(id) => {
                 let name: &str = id.borrow();
                 if let Some(ptr) = self.lvalue_symbol_table.get_from_last(name) {
                     Ok(ptr.clone())
@@ -525,13 +526,13 @@ impl<'ctx> Compiler<'ctx> {
                 }
             }
 
-            LValueAST::ArraySubscript { id, expr } => {
+            LValueKind::ArraySubscript { id, expr } => {
                 let (expr_res, expr_ty) = self.cgen_expresion(expr)?;
                 // todo: this needs to be converted to int
 
                 let expr_res = self.cgen_int_value_or_load(expr_res, &expr_ty)?;
 
-                let LValueEntry { mut ptr, mut ty } =
+                let LValueEntry { mut ptr, mut ty, span } =
                     self.lvalue_symbol_table.get_from_last(*id).ok_or(IRError::String(format!("undeclared undeclared '{}'", id)))?;
 
                 // make sure we are subscripting an array
@@ -565,7 +566,7 @@ impl<'ctx> Compiler<'ctx> {
                     _ => unreachable!(),
                 };
 
-                Ok(LValueEntry::new(element_pointer?, iner_type.clone()))
+                Ok(LValueEntry::new(element_pointer?, iner_type.clone(), span))
             }
         }
     }
@@ -775,11 +776,11 @@ impl<'ctx> Compiler<'ctx> {
             }
 
             StatementKind::Assignment { lvalue, expr } => {
-                if matches!(lvalue, LValueAST::String(_)) {
+                if matches!(lvalue.kind, LValueKind::String(_)) {
                     return Err(IRError::String("Cannot assign to a string constant".to_string()));
                 }
                 // todo: this neeeds further checking
-                let LValueEntry { ptr: mut lval_ptr, ty: mut lval_type } = self.cgen_lvalue_ptr(lvalue)?;
+                let LValueEntry { ptr: mut lval_ptr, ty: mut lval_type, span: _ } = self.cgen_lvalue_ptr(lvalue)?;
                 let (expr, expr_type): (BasicValueEnum<'ctx>, IRType) = self.cgen_expresion(expr)?;
 
                 if !lval_type.is_primitive() & !lval_type.is_primitive_reference() {
@@ -926,15 +927,15 @@ impl<'ctx> Compiler<'ctx> {
             // todo: check for duplicates
             // ? solved with try_insert ?
             match local {
-                LocalDefinitionAST::VarDef(VarDefAST { name, type_, span: _ }) => {
+                LocalDefinitionAST::VarDef(VarDefAST { name, type_, span }) => {
                     let ty = self.get_irtype(&type_.kind);
                     let ptr = self.builder.build_alloca(self.from_irtype(&ty).into_int_type(), name)?;
 
                     self.lvalue_symbol_table
-                        .try_insert(name, LValueEntry::new(ptr, ty))
+                        .try_insert(name, LValueEntry::new(ptr, ty, *span))
                         .map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
                 }
-                LocalDefinitionAST::ArrayDef(ArrayDefAST { name, type_, size, span: _ }) => {
+                LocalDefinitionAST::ArrayDef(ArrayDefAST { name, type_, size, span }) => {
                     let ty = self.get_irtype(&type_.kind);
                     let name = name.borrow();
                     let ir_type = ty.into_array_type(*size);
@@ -943,7 +944,7 @@ impl<'ctx> Compiler<'ctx> {
                     let ptr = self.builder.build_array_alloca(self.from_irtype(&ty).into_int_type(), size, name)?;
 
                     self.lvalue_symbol_table
-                        .try_insert(name, LValueEntry::new(ptr, ir_type))
+                        .try_insert(name, LValueEntry::new(ptr, ir_type, *span))
                         .map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
                 }
                 LocalDefinitionAST::FunctionDef(f) => {
@@ -1069,7 +1070,7 @@ impl<'ctx> Compiler<'ctx> {
 
             // Add parameter to functions scope
             self.lvalue_symbol_table
-                .try_insert(arg.name, LValueEntry::new(param_ptr, ir_type))
+                .try_insert(arg.name, LValueEntry::new(param_ptr, ir_type, arg.span))
                 .map_err(|_| IRError::String(format!(" multiple arguments with name of' {}'", arg.name)))?;
         }
 
@@ -1095,7 +1096,7 @@ impl<'ctx> Compiler<'ctx> {
             // param_ir_types.push(ir_type.clone());
             symbol_entry_capture_list.insert(capture, ir_type.clone());
             self.lvalue_symbol_table
-                .try_insert(capture, LValueEntry::new(param_ptr, ir_type))
+                .try_insert(capture, LValueEntry::new(param_ptr, ir_type, capture_entry.span))
                 .map_err(|_| IRError::String("Should not happen - multiple captures with the same name".to_string()))?;
         }
 

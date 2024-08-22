@@ -58,12 +58,16 @@ pub enum InfixOperator {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum LValueAST<'a> {
+pub enum LValueKind<'a> {
     String(internment::Intern<String>),
-
     Identifier(&'a str),
-
     ArraySubscript { id: &'a str, expr: Box<ExprAST<'a>> },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LValueAST<'a> {
+    pub kind: LValueKind<'a>,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -214,20 +218,32 @@ impl Serialize for Type {
     }
 }
 
+impl Serialize for LValueKind<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            LValueKind::String(s) => serializer.serialize_str(s),
+            LValueKind::Identifier(s) => serializer.serialize_str(s),
+            LValueKind::ArraySubscript { id, expr } => {
+                let mut state = serializer.serialize_struct("ArraySubscript", 2)?;
+                state.serialize_field("id", id)?;
+                state.serialize_field("expr", expr)?;
+                state.end()
+            }
+        }
+    }
+}
+
 impl Serialize for LValueAST<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         let mut state = serializer.serialize_struct("LValue", 2)?;
-        match self {
-            LValueAST::String(s) => state.serialize_field("string", s.as_str())?,
-            LValueAST::Identifier(id) => state.serialize_field("identifier", &id)?,
-            LValueAST::ArraySubscript { id, expr } => {
-                state.serialize_field("id", &id)?;
-                state.serialize_field("expr", &expr)?;
-            }
-        }
+        state.serialize_field("span", &self.span.to_string())?;
+        state.serialize_field("kind", &self.kind)?;
         state.end()
     }
 }

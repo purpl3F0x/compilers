@@ -1,6 +1,8 @@
 use super::irtype::IRType;
-use inkwell::values::{FunctionValue, PointerValue};
+use super::Span;
 use std::collections::HashMap;
+
+use inkwell::values::{FunctionValue, PointerValue};
 
 // todo: Implement Span
 
@@ -8,12 +10,13 @@ use std::collections::HashMap;
 pub struct LValueEntry<'ctx> {
     pub ptr: PointerValue<'ctx>,
     pub ty: IRType,
-    // pub span: Span,
+    /// The span of the declaration of the lvalue
+    pub span: Span,
 }
 
 impl<'ctx> LValueEntry<'ctx> {
-    pub fn new(ptr: PointerValue<'ctx>, ty: IRType) -> LValueEntry {
-        LValueEntry { ptr, ty }
+    pub fn new(ptr: PointerValue<'ctx>, ty: IRType, span: Span) -> LValueEntry {
+        LValueEntry { ptr, ty, span }
     }
 }
 
@@ -23,6 +26,7 @@ pub struct FunctionEntry<'ctx> {
     pub return_ty: IRType,
     pub param_tys: Vec<IRType>,
     pub captures: Option<HashMap<&'ctx str, IRType>>,
+    // ! The span of the declaration of the function
     // pub span: Span,
 }
 

@@ -5,7 +5,7 @@ mod parser_tests {
     use alan::Span;
     use logos::Logos;
 
-    use crate::parser_tests::LValueAST::Identifier;
+    use crate::parser_tests::LValueKind::Identifier;
 
     use chumsky::{input::Stream, prelude::*};
 
@@ -117,7 +117,10 @@ mod parser_tests {
                             lhs: Box::new(ExprAST {
                                 span: Span::new(0, 7),
                                 kind: ExprKind::InfixOp {
-                                    lhs: Box::new(ExprAST { span: Span::new(0, 1), kind: ExprKind::LValue(Identifier("a")) }),
+                                    lhs: Box::new(ExprAST {
+                                        span: Span::new(0, 1),
+                                        kind: ExprKind::LValue(LValueAST { kind: LValueKind::Identifier("a"), span: Span::new(0, 1) })
+                                    }),
                                     op: InfixOperator::Add,
                                     rhs: Box::new(ExprAST {
                                         span: Span::new(4, 7),
@@ -148,12 +151,18 @@ mod parser_tests {
                                         },
                                         ExprAST {
                                             span: Span::new(23, 27),
-                                            kind: ExprKind::LValue(LValueAST::ArraySubscript {
-                                                id: "a",
-                                                expr: Box::new(ExprAST {
-                                                    span: Span::new(25, 26),
-                                                    kind: ExprKind::LValue(Identifier("i")),
-                                                }),
+                                            kind: ExprKind::LValue(LValueAST {
+                                                kind: LValueKind::ArraySubscript {
+                                                    id: "a",
+                                                    expr: Box::new(ExprAST {
+                                                        span: Span::new(25, 26),
+                                                        kind: ExprKind::LValue(LValueAST {
+                                                            kind: LValueKind::Identifier("i"),
+                                                            span: Span::new(25, 26)
+                                                        }),
+                                                    }),
+                                                },
+                                                span: Span::new(23, 27)
                                             }),
                                         },
                                     ],
@@ -165,9 +174,12 @@ mod parser_tests {
                     op: InfixOperator::Add,
                     rhs: Box::new(ExprAST {
                         span: Span::new(31, 36),
-                        kind: ExprKind::LValue(LValueAST::ArraySubscript {
-                            id: "a",
-                            expr: Box::new(ExprAST { span: Span::new(33, 35), kind: ExprKind::Literal(Literal::Int(42)) }),
+                        kind: ExprKind::LValue(LValueAST {
+                            kind: LValueKind::ArraySubscript {
+                                id: "a",
+                                expr: Box::new(ExprAST { span: Span::new(33, 35), kind: ExprKind::Literal(Literal::Int(42)) }),
+                            },
+                            span: Span::new(31, 36)
                         }),
                     }),
                 },
@@ -243,7 +255,7 @@ mod parser_tests {
             ],
             body: vec![StatementAST {
                 kind: StatementKind::Assignment {
-                    lvalue: LValueAST::Identifier("x"),
+                    lvalue: LValueAST { kind: LValueKind::Identifier("x"), span: Span::new(174, 175) }, // Span for "x"
                     expr: ExprAST {
                         span: Span::new(178, 180), // Span for "42"
                         kind: ExprKind::Literal(Literal::Int(42)),

@@ -16,13 +16,16 @@ where
     let subscript = ident
         .clone()
         .then(parse_expr().delimited_by(just(Token::BracketOpen), just(Token::BracketClose)))
-        .map(|(id, expr)| LValueAST::ArraySubscript { id, expr: Box::new(expr) });
+        .map_with(|(id, expr), e| LValueAST { kind: LValueKind::ArraySubscript { id, expr: Box::new(expr) }, span: e.span() });
 
     let string_const = select! {
-        Token::StringConst(s) => LValueAST::String(s),
-    };
+        Token::StringConst(s) => LValueKind::String(s),
+    }
+    .map_with(|kind, e| LValueAST { kind, span: e.span() });
 
-    let lvalue = string_const.or(subscript).or(ident.clone().map(LValueAST::Identifier));
+    let single_ident = ident.map_with(|id, e| LValueAST { kind: LValueKind::Identifier(id), span: e.span() });
+
+    let lvalue = string_const.or(subscript).or(single_ident);
 
     lvalue.labelled("l-value").as_context()
 }
@@ -74,17 +77,21 @@ where
 
         let subscript = ident
             .then(expr.clone().delimited_by(just(Token::BracketOpen), just(Token::BracketClose)))
-            .map(|(id, expr)| LValueAST::ArraySubscript { id, expr: Box::new(expr) });
+            .map_with(|(id, expr), e| LValueAST { kind: LValueKind::ArraySubscript { id, expr: Box::new(expr) }, span: e.span() });
 
         let string_const = select! {
-            Token::StringConst(s) => LValueAST::String(s),
-        };
+            Token::StringConst(s) => LValueKind::String(s),
+        }
+        .map_with(|kind, e| LValueAST { kind, span: e.span() });
+
+        let single_ident = ident.map_with(|id, e| LValueAST { kind: LValueKind::Identifier(id), span: e.span() });
 
         let lvalue = string_const
             .or(subscript)
-            .or(ident.clone().map(LValueAST::Identifier))
+            .or(single_ident)
             .map_with(|kind, e| ExprAST { kind: ExprKind::LValue(kind), span: e.span() })
-            .labelled("l-value");
+            .labelled("l-value")
+            .as_context();
 
         let fn_call_into_expr = call.map_with(|call, e| ExprAST { kind: ExprKind::FunctionCall(call), span: e.span() });
 
