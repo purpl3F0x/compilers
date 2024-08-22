@@ -7,6 +7,5 @@ mod symbol_table_entries;
 use crate::*;
 
 pub use compiler::*;
-pub use irresult::*;
-pub use irtype::*;
-pub use scope::*;
+use irresult::*;
+use irtype::*;
