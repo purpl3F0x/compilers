@@ -126,6 +126,7 @@ pub enum StatementKind<'a> {
 
     While { condition: ConditionAST<'a>, body: Box<StatementAST<'a>> },
 
+    #[serde(serialize_with = "serialize_return")]
     Return(Option<ExprAST<'a>>),
 }
 
@@ -339,6 +340,21 @@ impl Serialize for FunctionAST<'_> {
         state.end()
     }
 }
+
+pub fn serialize_return<S>(ret: &Option<ExprAST<'_>>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let mut state;
+    if let Some(e) = ret {
+        state = serializer.serialize_struct("Return", 1)?;
+        state.serialize_field("expr", e)?;
+    } else {
+        state = serializer.serialize_struct("Return", 0)?;
+    }
+    state.end()
+}
+
 
 impl FunctionAST<'_> {
     pub fn print(&self) -> std::io::Result<()> {
