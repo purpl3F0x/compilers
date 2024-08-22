@@ -4,7 +4,6 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 
-
 Compiler of the Alan programming language, developed for the 8th semester's Compilers course at NTUA.
 
 ## Author ✍️
@@ -36,13 +35,13 @@ In addition, llvm-sys will <u>**try**</u> to link llvm staticaly, (platforms suc
 Clone the project
 
 ```bash
-git clone https://github.com/purpl3F0x/alanc.git
+git clone https://github.com/purpl3F0x/compilers.git
 ```
 
 Go to the project directory
 
 ```bash
-cd alanc-master
+cd compilers
 ```
 
 Run with cargo
