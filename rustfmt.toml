@@ -1,4 +1,2 @@
-fn_brace_style = "AlwaysNextLine"
-item_brace_style = "AlwaysNextLine"
 max_width = 140
 use_small_heuristics = "Max"
