@@ -115,16 +115,26 @@ pub struct ConditionAST<'a> {
 pub enum StatementKind<'a> {
     Error,
 
-    Assignment { lvalue: LValueAST<'a>, expr: ExprAST<'a> },
+    Assignment {
+        lvalue: LValueAST<'a>,
+        expr: ExprAST<'a>,
+    },
 
     Expr(ExprAST<'a>),
     Compound(Vec<StatementAST<'a>>),
 
     FunctionCall(FnCallAST<'a>),
 
-    If { condition: ConditionAST<'a>, then: Box<StatementAST<'a>>, else_: Option<Box<StatementAST<'a>>> },
+    If {
+        condition: ConditionAST<'a>,
+        then: Box<StatementAST<'a>>,
+        else_: Option<Box<StatementAST<'a>>>,
+    },
 
-    While { condition: ConditionAST<'a>, body: Box<StatementAST<'a>> },
+    While {
+        condition: ConditionAST<'a>,
+        body: Box<StatementAST<'a>>,
+    },
 
     #[serde(serialize_with = "serialize_return")]
     Return(Option<ExprAST<'a>>),
@@ -354,7 +364,6 @@ where
     }
     state.end()
 }
-
 
 impl FunctionAST<'_> {
     pub fn print(&self) -> std::io::Result<()> {
