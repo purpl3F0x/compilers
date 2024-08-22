@@ -342,6 +342,7 @@ impl Serialize for FunctionAST<'_> {
     {
         let mut state = serializer.serialize_struct("Function", 6)?;
         state.serialize_field("span", &self.span.to_string())?;
+        state.serialize_field("signature_span", &self.signature_span.to_string())?;
         state.serialize_field("name", &self.name)?;
         state.serialize_field("args", &self.params)?;
         state.serialize_field("rtype", &self.r_type)?;

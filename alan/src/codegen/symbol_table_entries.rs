@@ -26,8 +26,10 @@ pub struct FunctionEntry<'ctx> {
     pub return_ty: IRType,
     pub param_tys: Vec<IRType>,
     pub captures: Option<HashMap<&'ctx str, IRType>>,
-    // ! The span of the declaration of the function
-    // pub span: Span,
+    pub is_stdlib: bool,
+    /// The span of the declaration of the function
+    /// (stdlib/extern) functions have a span of 0,  0) - to avoid wasting memory for Option<Span>
+    pub span: Span,
 }
 
 impl<'ctx> FunctionEntry<'ctx> {
@@ -36,12 +38,13 @@ impl<'ctx> FunctionEntry<'ctx> {
         return_ty: IRType,
         param_tys: Vec<IRType>,
         captures: HashMap<&'ctx str, IRType>,
+        span: Span,
     ) -> FunctionEntry<'ctx> {
-        FunctionEntry { function, return_ty, param_tys, captures: Some(captures) }
+        FunctionEntry { function, return_ty, param_tys, captures: Some(captures), is_stdlib: false, span }
     }
 
     pub fn new_extern(function: FunctionValue<'ctx>, return_ty: IRType, param_tys: Vec<IRType>) -> FunctionEntry<'ctx> {
-        FunctionEntry { function, return_ty, param_tys, captures: None }
+        FunctionEntry { function, return_ty, param_tys, captures: None, is_stdlib: true, span: Span::new(0, 0) }
     }
 
     pub fn total_num_params(&self) -> usize {

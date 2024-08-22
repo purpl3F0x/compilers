@@ -1102,7 +1102,16 @@ impl<'ctx> Compiler<'ctx> {
 
         //* Insert function into functions scope
         self.function_symbol_table
-            .try_insert(name, FunctionEntry::new(function, self.get_irtype(&func.r_type.kind), param_ir_types, symbol_entry_capture_list))
+            .try_insert(
+                name,
+                FunctionEntry::new(
+                    function,
+                    self.get_irtype(&func.r_type.kind),
+                    param_ir_types,
+                    symbol_entry_capture_list,
+                    func.signature_span,
+                ),
+            )
             .map_err(|_| IRError::String(format!(" multiple functions with name of' {}'", name)))?;
 
         self.builder.position_at_end(block);
