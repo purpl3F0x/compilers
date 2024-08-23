@@ -1,0 +1,10 @@
+main(): proc
+
+    foo(): int
+    {
+        return 'c';
+    }
+
+{
+
+}

@@ -1,0 +1,5 @@
+main(): proc
+    foo(): int{return 42;}
+
+    foo(): int{return 17;}
+{}

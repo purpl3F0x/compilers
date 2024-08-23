@@ -1,0 +1,7 @@
+main(): proc
+    foo(x: reference int): proc
+    {
+    }
+{
+    foo(42);
+}

@@ -1,0 +1,8 @@
+main(): proc
+    foo(x: int): proc
+    {
+        
+    }
+{
+    foo(42, 17);
+}

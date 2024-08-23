@@ -1,0 +1,5 @@
+main(): proc
+    x: byte;
+{
+    x = 42;
+}

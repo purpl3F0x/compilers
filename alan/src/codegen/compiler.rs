@@ -2,10 +2,11 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::ast::*;
 use super::scope::{Scope, Scopes};
+use super::semantic::SemanticError;
 use super::symbol_table_entries::{FunctionEntry, LValueEntry};
 use super::IntType as AlanIntType;
+use super::{ast::*, Span};
 use super::{IRError, IRResult, IRType};
 
 use stdlib::LIBALAN_BITCODE as STDLIB_IR; // append stdlib as bitcode (see here: https://github.com/hyperledger/solang/blob/06798cd/src/emit/binary.rs#L1299)
@@ -94,7 +95,7 @@ impl<'ctx> Compiler<'ctx> {
                 RelocMode::PIC,
                 CodeModel::Default,
             )
-            .ok_or(IRError::String("Could not create target machine".to_string()))
+            .ok_or(IRError::String("[LLVM] Could not create target machine".to_string()))
     }
 
     //* ------------------------ *//
@@ -159,10 +160,15 @@ impl<'ctx> Compiler<'ctx> {
 
         //* Manually add the main function, to make sure ia has name of main
         if program.r_type.kind != TypeKind::Void {
-            return Err(IRError::String("Top level function must return proc".to_string()));
+            return Err(SemanticError::TopIsNotAProc {
+                signature_span: program.signature_span,
+                ret_ty: self.get_irtype(&program.r_type.kind),
+                r_ty_span: program.r_type.span,
+            }
+            .into());
         }
         if program.params.len() != 0 {
-            return Err(IRError::String("Top level function must not have arguments".to_string()));
+            return Err(SemanticError::TopHasArguments { signature_span: program.signature_span }.into());
         }
 
         //* Start creating main
@@ -373,7 +379,7 @@ impl<'ctx> Compiler<'ctx> {
                     "strcpy" => register_function!("strcpy", func_value, IRType::Void, vec![IRType::Reference(Box::new(IRType::Array(Box::new(IRType::Byte), -1))), IRType::Reference(Box::new(IRType::Array(Box::new(IRType::Byte), -1)))]),
                     "strcat" => register_function!("strcat", func_value, IRType::Void, vec![IRType::Reference(Box::new(IRType::Array(Box::new(IRType::Byte), -1))), IRType::Reference(Box::new(IRType::Array(Box::new(IRType::Byte), -1)))]),
 
-                    _ => {return Err(IRError::String(format!("Unknown function in stdlib: {}", func_name_str)))}
+                    _ => {return Err(IRError::String(format!("[internal] Unknown function in stdlib: {}", func_name_str)))}
                 }
             }
         }
@@ -396,26 +402,47 @@ impl<'ctx> Compiler<'ctx> {
     /// Generate IR for an [ExprAST]
     fn cgen_expresion(&mut self, expr: &'ctx ExprAST) -> IRResult<(BasicValueEnum<'ctx>, IRType)> {
         match &expr.kind {
-            ExprKind::Error => Err(IRError::UnknownError),
+            ExprKind::Error => Err(IRError::UnknownError), // We should never get here
 
             ExprKind::Literal(ref lit) => {
                 let lit = self.cgen_literal(lit)?;
                 Ok((lit.0.as_basic_value_enum(), lit.1))
             }
 
-            ExprKind::InfixOp { ref lhs, op, ref rhs } => {
-                let (lhs, lhs_ty) = self.cgen_expresion(lhs)?;
-                let (rhs, rhs_ty) = self.cgen_expresion(rhs)?;
+            ExprKind::InfixOp { lhs: ref lhs_expr, op, rhs: ref rhs_expr } => {
+                let (lhs, lhs_ty) = self.cgen_expresion(lhs_expr)?;
+                let (rhs, rhs_ty) = self.cgen_expresion(rhs_expr)?;
 
-                let lhs = self.cgen_int_value_or_load(lhs, &lhs_ty)?;
-                let rhs = self.cgen_int_value_or_load(rhs, &rhs_ty)?;
+                let lhs = self.cgen_int_value_or_load(lhs, &lhs_ty, lhs_expr.span)?;
+                let rhs = self.cgen_int_value_or_load(rhs, &rhs_ty, rhs_expr.span)?;
 
                 // ? casting ??
                 if lhs.get_type() != rhs.get_type() {
-                    return Err(IRError::String(
-                        format!("Infix operator '{}' requires both operands to have the same type, got '{}' and '{}'", op, lhs_ty, rhs_ty)
-                            .to_string(),
-                    ));
+                    let lhs_decl_span = match &lhs_expr.kind {
+                        ExprKind::LValue(ref lval) => match lval.kind {
+                            LValueKind::Identifier(id) => Some(self.lvalue_symbol_table.get_from_last(id).unwrap().span),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    let rhs_decl_span = match &rhs_expr.kind {
+                        ExprKind::LValue(ref lval) => match lval.kind {
+                            LValueKind::Identifier(id) => Some(self.lvalue_symbol_table.get_from_last(id).unwrap().span),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+
+                    return Err(SemanticError::MissmatchExprTypes {
+                        span: expr.span,
+                        lhs: lhs_ty,
+                        rhs: rhs_ty,
+                        lhs_span: lhs_expr.span,
+                        rhs_span: rhs_expr.span,
+                        lhs_decl_span: lhs_decl_span,
+                        rhs_decl_span: rhs_decl_span,
+                    }
+                    .into());
                 }
                 Ok((
                     match op {
@@ -469,9 +496,9 @@ impl<'ctx> Compiler<'ctx> {
                 ))
             }
             ExprKind::PrefixOp { op, ref expr } => {
-                let (expr, expr_ty) = self.cgen_expresion(expr)?;
+                let (expr_value, expr_ty) = self.cgen_expresion(expr)?;
 
-                let expr = self.cgen_int_value_or_load(expr, &expr_ty)?;
+                let expr = self.cgen_int_value_or_load(expr_value, &expr_ty, expr.span)?;
 
                 Ok((
                     match op {
@@ -495,8 +522,11 @@ impl<'ctx> Compiler<'ctx> {
 
             ExprKind::FunctionCall(ref fn_call) => {
                 let (fn_value, fn_type) = self.cgen_fn_call(fn_call)?;
+
                 if fn_type.is_void() {
-                    Err(IRError::String("Function call does not return a value".to_string()))
+                    let function_entry = self.function_symbol_table.get(fn_call.name).unwrap();
+                    let fn_span = function_entry.span;
+                    Err(SemanticError::AssignResultOfProc { span: fn_call.span, decl_span: fn_span }.into())
                 } else {
                     Ok((fn_value.try_as_basic_value().unwrap_left(), fn_type))
                 }
@@ -522,7 +552,7 @@ impl<'ctx> Compiler<'ctx> {
                 if let Some(ptr) = self.lvalue_symbol_table.get_from_last(name) {
                     Ok(ptr.clone())
                 } else {
-                    Err(IRError::String(format!("undeclared undeclared '{}'", name)))
+                    Err(SemanticError::UndeclaredIdentifier { name: name.to_string(), span: lval.span }.into())
                 }
             }
 
@@ -530,10 +560,11 @@ impl<'ctx> Compiler<'ctx> {
                 let (expr_res, expr_ty) = self.cgen_expresion(expr)?;
                 // todo: this needs to be converted to int
 
-                let expr_res = self.cgen_int_value_or_load(expr_res, &expr_ty)?;
+                let expr_res = self.cgen_int_value_or_load(expr_res, &expr_ty, expr.span)?;
 
-                let LValueEntry { mut ptr, mut ty, span } =
-                    self.lvalue_symbol_table.get_from_last(*id).ok_or(IRError::String(format!("undeclared undeclared '{}'", id)))?;
+                let LValueEntry { mut ptr, mut ty, span } = self.lvalue_symbol_table.get_from_last(*id).ok_or_else(|| {
+                    return SemanticError::UndeclaredIdentifier { name: id.to_string(), span: lval.span };
+                })?;
 
                 // make sure we are subscripting an array
                 if !ty.is_array() {
@@ -541,12 +572,12 @@ impl<'ctx> Compiler<'ctx> {
                     if ty.is_reference() {
                         ty = ty.get_inner_type().unwrap().clone();
                         if !ty.is_array() {
-                            return Err(IRError::String(format!("identifier '{}' is not an array, (expected array found {})", id, ty)));
+                            return Err(SemanticError::SubscriptingNonArray { span: lval.span, ty, decl_span: span }.into());
                         }
                         // we must load the reference
                         ptr = self.builder.build_load(self.ptr_type, ptr, format!("deref.{}", id).as_str())?.into_pointer_value();
                     } else {
-                        return Err(IRError::String(format!("identifier '{}' is not an array, (expected array found {})", id, ty)));
+                        return Err(SemanticError::SubscriptingNonArray { span: lval.span, ty, decl_span: span }.into());
                     }
                 }
                 let iner_type: &IRType = ty.get_inner_type().unwrap();
@@ -572,7 +603,7 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     /// This function will get a IntValue or load an IntValue from a PointerValue (aka reference)
-    fn cgen_int_value_or_load(&mut self, value: BasicValueEnum<'ctx>, ty: &IRType) -> IRResult<IntValue<'ctx>> {
+    fn cgen_int_value_or_load(&mut self, value: BasicValueEnum<'ctx>, ty: &IRType, span: Span) -> IRResult<IntValue<'ctx>> {
         if value.is_int_value() {
             Ok(value.into_int_value())
         } else if value.is_pointer_value() {
@@ -581,25 +612,27 @@ impl<'ctx> Compiler<'ctx> {
                 IRType::Byte => Ok(self.builder.build_load(self.char_type, value.into_pointer_value(), "")?.into_int_value()),
                 IRType::Reference(ref ty) => {
                     if !(ty.is_int() || ty.is_byte()) {
-                        return Err(IRError::String("Cannot load a non-integral type from a pointer".to_string()));
+                        return Err(SemanticError::PtrAsPrimitive { span: span, ty: ty.get_inner_type().unwrap().to_owned() }.into());
                     }
                     // 1. load the pointer
                     let ptr = self.builder.build_load(self.ptr_type, value.into_pointer_value(), "deref")?;
                     // 2. load the value from the pointer
-                    self.cgen_int_value_or_load(ptr, ty)
+                    self.cgen_int_value_or_load(ptr, ty, span)
                 }
-                _ => Err(IRError::String("Cannot load a non-integral type from a pointer".to_string())),
+                _ => Err(SemanticError::PtrAsPrimitive { span: span, ty: ty.to_owned() }.into()),
             }
         } else {
-            Err(IRError::String("Expected an int or byte".to_string()))
+            Err(SemanticError::PtrAsPrimitive { span: span, ty: ty.to_owned() }.into())
         }
     }
 
     /// Generate IR for a [FnCallAST]
     fn cgen_fn_call(&mut self, fn_call: &'ctx FnCallAST) -> IRResult<(CallSiteValue<'ctx>, IRType)> {
-        let function_entry =
-            self.function_symbol_table.get(fn_call.name).ok_or(IRError::String(format!("Function {} not found", fn_call.name)))?;
-        //(func, func_type, func_captures)
+        let function_entry = self
+            .function_symbol_table
+            .get(fn_call.name)
+            .ok_or(SemanticError::UndeclaredFunction { span: fn_call.span, name: fn_call.name.to_string() })?;
+
         let func_value = &function_entry.function;
         let func_type = &function_entry.return_ty;
         let func_params = &function_entry.param_tys;
@@ -609,20 +642,21 @@ impl<'ctx> Compiler<'ctx> {
 
         //* Check if the number of arguments match
         if func_params.len() != call_params.len() {
-            return Err(IRError::String(format!(
-                "Function '{}{}' expected {} arguments, got {}",
-                fn_call.name,
-                function_entry,
-                func_params.len(),
-                call_params.len()
-            )));
+            return Err(SemanticError::MissmatchedArgumentCount {
+                span: fn_call.span,
+                expected: func_params.len(),
+                found: call_params.len(),
+                decl_span: function_entry.span,
+                func_signature: function_entry.signature_string(),
+            }
+            .into());
         }
         //* args to be passed to builder
         let mut args: Vec<BasicMetadataValueEnum> = Vec::with_capacity(call_params.len());
 
         //* Check if the types of the arguments match
-        for (i, (param_ty, arg)) in func_params.iter().zip(call_params.iter()).enumerate() {
-            let (mut arg, mut arg_ty) = self.cgen_expresion(arg)?;
+        for (i, (param_ty, arg_expr)) in func_params.iter().zip(call_params.iter()).enumerate() {
+            let (mut arg, mut arg_ty) = self.cgen_expresion(arg_expr)?;
 
             match &param_ty {
                 //* Handle primitive types
@@ -635,23 +669,31 @@ impl<'ctx> Compiler<'ctx> {
                     }
 
                     if param_ty != under_ty {
-                        return Err(IRError::String(format!(
-                            "Function '{}' expected argument({}) of type {}, got {}",
-                            fn_call.name, i, param_ty, arg_ty
-                        )));
+                        return Err(SemanticError::ArgumentTypeMismatch {
+                            span: arg_expr.span,
+                            arg_index: i,
+                            expected: param_ty.clone(),
+                            found: arg_ty.clone(),
+                            decl_span: function_entry.span,
+                            func_signature: function_entry.signature_string(),
+                        }
+                        .into());
                     }
 
-                    let arg = self.cgen_int_value_or_load(arg, &arg_ty)?;
+                    let arg = self.cgen_int_value_or_load(arg, &arg_ty, arg_expr.span)?;
                     args.push(arg.into())
                 }
 
                 //* Handle references
                 IRType::Reference(_ty) => {
                     if !arg.is_pointer_value() {
-                        return Err(IRError::String(format!(
-                            "Cannot pass argument of type '{}' which is constant to function '{}', expected a reference - Argument should be an lvalue",
-                            arg_ty, fn_call.name
-                        )));
+                        return Err(SemanticError::ConstantAsRef {
+                            span: arg_expr.span,
+                            ty: arg_ty,
+                            ref_ty: param_ty.clone(),
+                            decl_span: function_entry.span,
+                        }
+                        .into());
                     }
                     if arg_ty.is_reference() {
                         arg = self.builder.build_load(self.ptr_type, arg.into_pointer_value(), "deref")?;
@@ -659,10 +701,15 @@ impl<'ctx> Compiler<'ctx> {
                     }
 
                     if param_ty.get_inner_type().unwrap() != &arg_ty {
-                        return Err(IRError::String(format!(
-                            "Function '{}' expected argument({}) of type {}, got {}",
-                            fn_call.name, i, param_ty, arg_ty
-                        )));
+                        return Err(SemanticError::ArgumentTypeMismatch {
+                            span: arg_expr.span,
+                            arg_index: i,
+                            expected: param_ty.clone(),
+                            found: arg_ty.clone(),
+                            decl_span: function_entry.span,
+                            func_signature: function_entry.signature_string(),
+                        }
+                        .into());
                     }
                     args.push(arg.into())
                 }
@@ -679,10 +726,9 @@ impl<'ctx> Compiler<'ctx> {
                 let capture_ptr = self
                     .lvalue_symbol_table
                     .get_from_last(lval)
-                    .ok_or_else(|| IRError::String(format!("Capture '{}' not found in the current scope", lval)))?;
+                    .ok_or_else(|| IRError::String(format!("[Internal Error] Capture '{}' not found in the current scope", lval)))?; // todo: transform to internal error
 
                 let arg = capture_ptr.ptr;
-
                 args.push(arg.into());
             }
         }
@@ -726,12 +772,12 @@ impl<'ctx> Compiler<'ctx> {
                 }?)
             }
 
-            ConditionKind::ExprComparison { ref lhs, op, ref rhs } => {
-                let (lhs, lhs_ty) = self.cgen_expresion(lhs)?;
-                let (rhs, rhs_ty) = self.cgen_expresion(rhs)?;
+            ConditionKind::ExprComparison { lhs: ref lhs_expr, op, rhs: ref rhs_expr } => {
+                let (lhs, lhs_ty) = self.cgen_expresion(lhs_expr)?;
+                let (rhs, rhs_ty) = self.cgen_expresion(rhs_expr)?;
 
-                let mut lhs = self.cgen_int_value_or_load(lhs, &lhs_ty)?;
-                let mut rhs = self.cgen_int_value_or_load(rhs, &rhs_ty)?;
+                let mut lhs = self.cgen_int_value_or_load(lhs, &lhs_ty, lhs_expr.span)?;
+                let mut rhs = self.cgen_int_value_or_load(rhs, &rhs_ty, rhs_expr.span)?;
 
                 // Enable char-int comparisons
                 if rhs.get_type() != lhs.get_type() {
@@ -777,14 +823,20 @@ impl<'ctx> Compiler<'ctx> {
 
             StatementKind::Assignment { lvalue, expr } => {
                 if matches!(lvalue.kind, LValueKind::String(_)) {
-                    return Err(IRError::String("Cannot assign to a string constant".to_string()));
+                    return Err(SemanticError::AssignToString { span: stmt.span }.into());
                 }
                 // todo: this neeeds further checking
-                let LValueEntry { ptr: mut lval_ptr, ty: mut lval_type, span: _ } = self.cgen_lvalue_ptr(lvalue)?;
-                let (expr, expr_type): (BasicValueEnum<'ctx>, IRType) = self.cgen_expresion(expr)?;
+                let LValueEntry { ptr: mut lval_ptr, ty: mut lval_type, span } = self.cgen_lvalue_ptr(lvalue)?;
+                let (expr_value, expr_type): (BasicValueEnum<'ctx>, IRType) = self.cgen_expresion(expr)?;
 
                 if !lval_type.is_primitive() & !lval_type.is_primitive_reference() {
-                    return Err(IRError::String(format!("Cannot assign to a non-integral type {}", lval_type)));
+                    return Err(SemanticError::AssignTypeMismatch {
+                        span: stmt.span,
+                        expected: lval_type,
+                        found: expr_type,
+                        decl_span: span,
+                    }
+                    .into());
                 }
 
                 if lval_type.is_reference() {
@@ -796,17 +848,28 @@ impl<'ctx> Compiler<'ctx> {
                         IRType::Byte => {
                             lval_ptr = self.builder.build_load(self.ptr_type, lval_ptr, "deref")?.into_pointer_value();
                         }
-                        _ => return Err(IRError::String(format!("Cannot assign to a non-integral type {}", lval_type))),
+                        _ => {
+                            return Err(SemanticError::AssignTypeMismatch {
+                                span: stmt.span,
+                                expected: lval_type,
+                                found: expr_type,
+                                decl_span: span,
+                            }
+                            .into())
+                        }
                     }
                 }
 
-                let expr = self.cgen_int_value_or_load(expr, &expr_type)?;
+                let expr = self.cgen_int_value_or_load(expr_value, &expr_type, expr.span)?;
 
                 if expr.get_type() != self.from_irtype(&lval_type).into_int_type() {
-                    return Err(IRError::String(format!(
-                        "Cannot assign a value of type '{}' to a variable of type '{}'",
-                        expr_type, lval_type
-                    )));
+                    return Err(SemanticError::AssignTypeMismatch {
+                        span: stmt.span,
+                        expected: lval_type,
+                        found: expr_type,
+                        decl_span: span,
+                    }
+                    .into());
                 }
 
                 self.builder.build_store(lval_ptr, expr)?;
@@ -814,29 +877,46 @@ impl<'ctx> Compiler<'ctx> {
 
             StatementKind::FunctionCall(fn_call) => {
                 let (_, fn_value) = self.cgen_fn_call(fn_call)?;
+
                 if !fn_value.is_void() {
-                    return Err(IRError::String(format!(
-                        "Unused return value, when calling '{}' - that returns a {}",
-                        fn_call.name, fn_value
-                    )));
+                    // According to the spec, this is a hard-error, not a warning
+                    // ? maybe introduce a maybe_unused attribute ?
+                    let fn_entry = self.function_symbol_table.get(fn_call.name).unwrap();
+
+                    return Err(SemanticError::UnusedReturnValue {
+                        span: stmt.span,
+                        decl_span: fn_entry.span,
+                        ty: fn_value,
+                        ret_ty_span: fn_entry.ret_ty_span,
+                    }
+                    .into());
                 }
             }
 
             StatementKind::Return(expr) => {
                 if let Some(expr) = expr {
                     let (expr_res, expr_ty) = self.cgen_expresion(expr)?;
+                    // todo: add func delcaration to the error (see also bellow)
                     if expr_ty != self.current_function_return_type {
-                        return Err(IRError::String(format!(
-                            "Expected a return value of type '{}', got '{}'",
-                            self.current_function_return_type, expr_ty
-                        )));
+                        return Err(SemanticError::MissmatchedReturnType {
+                            span: expr.span,
+                            expected: self.current_function_return_type.clone(),
+                            found: expr_ty,
+                        }
+                        .into());
                     }
                     self.builder.build_return(Some(&expr_res))?;
                 } else {
                     if self.current_function_return_type.is_void() {
                         self.builder.build_return(None)?;
                     } else {
-                        return Err(IRError::String("Expected a return value".to_string()));
+                        // todo: add func delcaration to the error
+                        return Err(SemanticError::MissmatchedReturnType {
+                            span: stmt.span,
+                            expected: self.current_function_return_type.clone(),
+                            found: IRType::Void,
+                        }
+                        .into());
                     }
                 }
             }
@@ -878,7 +958,7 @@ impl<'ctx> Compiler<'ctx> {
                 if end_block.get_first_use() == None {
                     // if both branches return, delete end block
                     unsafe {
-                        return end_block.delete().map_err(|_| IRError::UnknownError);
+                        return end_block.delete().map_err(|_| IRError::String("[LLVM] Failed to delete block".to_string()));
                     };
                 } else {
                     self.builder.position_at_end(end_block);
@@ -924,16 +1004,14 @@ impl<'ctx> Compiler<'ctx> {
     /// Definition will be added in order of appearance
     fn cgen_locals(&mut self, locals: &'ctx Vec<LocalDefinitionAST<'ctx>>) -> IRResult<()> {
         for local in locals {
-            // todo: check for duplicates
-            // ? solved with try_insert ?
             match local {
                 LocalDefinitionAST::VarDef(VarDefAST { name, type_, span }) => {
                     let ty = self.get_irtype(&type_.kind);
                     let ptr = self.builder.build_alloca(self.from_irtype(&ty).into_int_type(), name)?;
 
-                    self.lvalue_symbol_table
-                        .try_insert(name, LValueEntry::new(ptr, ty, *span))
-                        .map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
+                    self.lvalue_symbol_table.try_insert(name, LValueEntry::new(ptr, ty, *span)).map_err(|e| {
+                        SemanticError::RedeclaringIdentifier { span: *span, name: name.to_string(), decl_span: e.entry.span }
+                    })?;
                 }
                 LocalDefinitionAST::ArrayDef(ArrayDefAST { name, type_, size, span }) => {
                     let ty = self.get_irtype(&type_.kind);
@@ -943,10 +1021,11 @@ impl<'ctx> Compiler<'ctx> {
 
                     let ptr = self.builder.build_array_alloca(self.from_irtype(&ty).into_int_type(), size, name)?;
 
-                    self.lvalue_symbol_table
-                        .try_insert(name, LValueEntry::new(ptr, ir_type, *span))
-                        .map_err(|_| IRError::String(format!(" redifinition of' {}'", name)))?;
+                    self.lvalue_symbol_table.try_insert(name, LValueEntry::new(ptr, ir_type, *span)).map_err(|e| {
+                        SemanticError::RedeclaringIdentifier { span: *span, name: name.to_string(), decl_span: e.entry.span }
+                    })?;
                 }
+
                 LocalDefinitionAST::FunctionDef(f) => {
                     // save current block (aka position)
                     let current_block = self.builder.get_insert_block().unwrap();
@@ -1050,7 +1129,7 @@ impl<'ctx> Compiler<'ctx> {
             self.builder.build_store(param_ptr, *param)?;
 
             if ir_type.is_array() {
-                return Err(IRError::String(format!("Arrays can only be passed by reference")));
+                return Err(SemanticError::ArrayAsNonRef { span: arg.span, ty: ir_type, decl_span: func.signature_span }.into());
             }
 
             // Hint llvm-ir that we have a reference
@@ -1069,9 +1148,14 @@ impl<'ctx> Compiler<'ctx> {
             param_ir_types.push(ir_type.clone());
 
             // Add parameter to functions scope
-            self.lvalue_symbol_table
-                .try_insert(arg.name, LValueEntry::new(param_ptr, ir_type, arg.span))
-                .map_err(|_| IRError::String(format!(" multiple arguments with name of' {}'", arg.name)))?;
+            self.lvalue_symbol_table.try_insert(arg.name, LValueEntry::new(param_ptr, ir_type, arg.span)).map_err(|e| {
+                SemanticError::MultipleArgumentsWithSameName {
+                    span: func.signature_span,
+                    name: arg.name.to_owned(),
+                    span1: e.entry.span,
+                    span2: arg.span,
+                }
+            })?;
         }
 
         //* Build captures
@@ -1095,9 +1179,9 @@ impl<'ctx> Compiler<'ctx> {
             // todo: hint llvm ir for the dereference size
             // param_ir_types.push(ir_type.clone());
             symbol_entry_capture_list.insert(capture, ir_type.clone());
-            self.lvalue_symbol_table
-                .try_insert(capture, LValueEntry::new(param_ptr, ir_type, capture_entry.span))
-                .map_err(|_| IRError::String("Should not happen - multiple captures with the same name".to_string()))?;
+            self.lvalue_symbol_table.try_insert(capture, LValueEntry::new(param_ptr, ir_type, capture_entry.span)).map_err(|_| {
+                IRError::String("[Internal Error] This shouldn't have happed - multiple captures with the same name".to_string())
+            })?;
         }
 
         //* Insert function into functions scope
@@ -1110,9 +1194,14 @@ impl<'ctx> Compiler<'ctx> {
                     param_ir_types,
                     symbol_entry_capture_list,
                     func.signature_span,
+                    func.r_type.span,
                 ),
             )
-            .map_err(|_| IRError::String(format!(" multiple functions with name of' {}'", name)))?;
+            .map_err(|e| SemanticError::RedeclaringFunction {
+                span: func.signature_span,
+                name: name.to_string(),
+                decl_span: e.entry.span,
+            })?;
 
         self.builder.position_at_end(block);
 
@@ -1139,7 +1228,11 @@ impl<'ctx> Compiler<'ctx> {
                         self.builder.position_at_end(bb);
                         self.builder.build_return(None)?;
                     } else {
-                        return Err(IRError::String(format!("Control flow reaches end of non-void function '{}'", name)));
+                        return Err(SemanticError::ReachEndOfNonVoidFunction {
+                            span: func.span,
+                            ret_ty: self.get_irtype(&func.r_type.kind),
+                        }
+                        .into());
                     }
                 }
             }

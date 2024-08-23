@@ -1,0 +1,7 @@
+main(): proc
+    foo(x: byte): proc
+    {
+    }
+{
+    foo(42);
+}

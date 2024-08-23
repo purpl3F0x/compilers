@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 #[derive(Debug, Clone)]
-pub struct InsertError;
+
+pub struct InsertError<T> {
+    pub entry: T,
+}
 
 pub type Scope<K, T> = HashMap<K, T>;
 
@@ -38,10 +41,10 @@ where
         self.scopes.last()?.get(&s).cloned()
     }
 
-    pub fn try_insert(&mut self, s: K, val: T) -> Result<(), InsertError> {
+    pub fn try_insert(&mut self, s: K, val: T) -> Result<(), InsertError<T>> {
         let entry = self.scopes.last_mut().unwrap().entry(s);
         match entry {
-            Entry::Occupied(_) => Err(InsertError),
+            Entry::Occupied(entry) => Err(InsertError { entry: entry.get().to_owned() }),
             Entry::Vacant(v) => {
                 v.insert(val);
                 Ok(())

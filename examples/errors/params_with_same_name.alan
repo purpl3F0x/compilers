@@ -1,0 +1,6 @@
+main(): proc
+    foo(x: int, x: int): proc
+    {
+        
+    }
+{}

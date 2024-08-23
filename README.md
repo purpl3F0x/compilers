@@ -70,7 +70,10 @@ Run it with `--version`, if you want to chase some dragons.
 - (Ridiculously) fast lexing, using [Logos](https://github.com/maciejhirsz/logos)
     
 - Errors made for humans, thanks to [chumsky](https://github.com/zesterer/chumsky) parser combinator + [ariadne](https://github.com/zesterer/ariadne)
-    ![alt text](./assets/error_example.png)
+    - ![alt text](./assets/error_example_parse.png)
+    - ![alt text](./assets/error_example_sem1.png)
+    - ![alt text](./assets/error_example_sem2.png)
+    - ![alt text](./assets/error_example_sem3.png)
 
 ## Known Bugs ☠️
 - [ ] Parsing lower bound negative integer (f.ex -2147483648 for 32b ints)
@@ -85,6 +88,10 @@ Run it with `--version`, if you want to chase some dragons.
 
         return;
     }
+
+### ToDo
+- [ ] Cross compilation
+- [ ] Warnings
 
 ##
 `

@@ -1,8 +1,7 @@
 /target
 
 .vscode/*
-/examples/*
-!examples/*.alan
+
 
 *.asm
 *.imm

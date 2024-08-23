@@ -1,0 +1,8 @@
+main(): proc
+x: int;
+    foo(): proc {
+
+    }
+{
+    x = foo();
+}

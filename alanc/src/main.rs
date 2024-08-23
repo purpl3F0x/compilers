@@ -84,7 +84,7 @@ fn main() {
     if errs.len() > 0 {
         // todo: use ariadne to print errors
         for e in errs {
-            print_error(&src_file_name, src_buffer.as_str(), &e);
+            report_parse_error(&src_file_name, src_buffer.as_str(), &e);
         }
 
         println!("exiting...");
@@ -103,7 +103,7 @@ fn main() {
         exit(0);
     }
 
-    // Create llvm context
+    //* Compile
     let mut context = cgen::Context::create();
     let mut compiler = cgen::Compiler::new(&mut context);
 
@@ -111,15 +111,18 @@ fn main() {
 
     let res = compiler.compile(&top);
 
-    if Ok(()) != res {
-        println!("Compilation failed, what? {}", res.unwrap_err());
+    //* Everything ok ?
+    if let Some(e) = res.as_ref().err() {
+        report_compiler_error(&src_file_name, src_buffer.as_str(), e);
         exit(1);
     }
 
+    //* Optimize ?
     if args.optimize {
         compiler.optimize();
     }
 
+    //* Write to output
     let s = compiler.imm_as_string();
     println!("{}", s);
 
