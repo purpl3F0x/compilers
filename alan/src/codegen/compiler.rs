@@ -636,7 +636,7 @@ impl<'ctx> Compiler<'ctx> {
         let func_value = &function_entry.function;
         let func_type = &function_entry.return_ty;
         let func_params = &function_entry.param_tys;
-        let _func_captures = &function_entry.captures;
+        let func_captures = &function_entry.captures;
 
         let call_params = &fn_call.args;
 
@@ -720,7 +720,7 @@ impl<'ctx> Compiler<'ctx> {
         //* Pass cacptures to the function
         //* Practically we could save the ptr in the symbol table, when building the function
         //* But this is safer, and prefered for now
-        if let Some(captures) = _func_captures {
+        if let Some(captures) = func_captures {
             for (lval, _lval_ty) in captures.into_iter() {
                 // ! this needs some furter checking for arrays and nested references
                 let capture_ptr = self

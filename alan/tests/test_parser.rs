@@ -5,8 +5,6 @@ mod parser_tests {
     use alan::Span;
     use logos::Logos;
 
-    use crate::parser_tests::LValueKind::Identifier;
-
     use chumsky::{input::Stream, prelude::*};
 
     fn parse_expr_test(input: &str) -> ExprAST {
