@@ -4,8 +4,6 @@ use std::collections::HashMap;
 
 use inkwell::values::{FunctionValue, PointerValue};
 
-// todo: Implement Span
-
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct LValueEntry<'ctx> {
     pub ptr: PointerValue<'ctx>,
