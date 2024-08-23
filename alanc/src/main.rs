@@ -11,7 +11,6 @@ use alan::Parser as alanParser;
 
 use std::process::exit;
 
-#[allow(unused_variables)]
 use std::io::{stdin, Error as ioError, Read};
 
 fn handle_io_error(err: ioError, what: Option<&str>) -> ! {
@@ -29,12 +28,12 @@ fn handle_io_error(err: ioError, what: Option<&str>) -> ! {
 fn main() {
     let args = Args::parse();
 
+    let mode = args.mode();
+
     let mut src_buffer = String::new();
-    let mut src_file_name: String = String::new();
+    let src_file_name;
 
-    // let mode = args.mode();
-
-    let mut imm_file_name = String::new();
+    let mut imm_file_name: String = String::new();
     let mut asm_file_name = String::new();
 
     /*
@@ -122,22 +121,23 @@ fn main() {
         compiler.optimize();
     }
 
-    //* Write to output
-    let s = compiler.imm_as_string();
-    println!("{}", s);
-
-    // let s = compiler.asm_as_string();
+    // //* Write to output
+    // let s = compiler.imm_as_string();
     // println!("{}", s);
 
-    // match mode {
-    //     FileMode::File => {
+    //* Write to output
+    match mode {
+        FileMode::File => {
+            let asm_path = std::path::Path::new(&asm_file_name);
 
-    //     }
-    //     FileMode::Stdio => {
-    //         println!("{}", compiler.asm_as_string());
-    //     }
-    //     FileMode::StdioIntermediate => {
-    //         println!("{}", compiler.imm_as_string());
-    //     }
-    // }
+            compiler.imm_to_file(&imm_file_name).ok();
+            compiler.asm_to_file(&asm_path).ok();
+        }
+        FileMode::Stdio => {
+            println!("{}", compiler.asm_as_string());
+        }
+        FileMode::StdioIntermediate => {
+            println!("{}", compiler.imm_as_string());
+        }
+    }
 }
