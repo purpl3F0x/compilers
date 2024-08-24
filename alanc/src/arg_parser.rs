@@ -101,6 +101,10 @@ pub struct Args {
     /// Print version information (use --version for full version info)
     #[arg(short = 'v', long = "version", action = clap::ArgAction::Version)]
     pub version: Option<bool>,
+
+    /// Specify LLVM target triple, for cross-compilation
+    #[arg(long = "target")]
+    pub target: Option<String>,
 }
 
 fn valid_input_file(s: &str) -> Result<PathBuf, String> {

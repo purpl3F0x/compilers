@@ -104,7 +104,10 @@ fn main() {
 
     //* Compile
     let mut context = cgen::Context::create();
-    let mut compiler = cgen::Compiler::new(&mut context);
+    let mut compiler = cgen::Compiler::new(&mut context, args.target).unwrap_or_else(|e| {
+        report_compiler_error(&src_file_name, src_buffer.as_str(), &e);
+        exit(1);
+    });
 
     compiler.set_source_file_name(&src_file_name);
 
@@ -121,7 +124,7 @@ fn main() {
         compiler.optimize();
     }
 
-    // //* Write to output
+    //* Write to output
     // let s = compiler.imm_as_string();
     // println!("{}", s);
 

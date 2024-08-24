@@ -18,7 +18,7 @@ use inkwell::{
     builder::Builder,
     module::{Linkage, Module},
     passes::PassBuilderOptions,
-    targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine},
+    targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},
     types::{AnyTypeEnum, BasicMetadataTypeEnum, BasicTypeEnum, IntType, PointerType, VoidType},
     values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, CallSiteValue, FunctionValue, IntValue},
     AddressSpace, IntPredicate,
@@ -73,18 +73,22 @@ impl<'ctx> Compiler<'ctx> {
 
     /// Generate a target machine with the given options
     fn generate_target(
+        target_triple_option: Option<String>,
         opt_level: Option<inkwell::OptimizationLevel>,
         cpu: Option<&str>,
         features: Option<&str>,
     ) -> IRResult<TargetMachine> {
-        let target_triple = TargetMachine::get_default_triple();
-        // ? Add option for cross-compiling ?
+        let target_triple: TargetTriple;
 
-        // Aparently this is quite expensve(epsecially the AMDGPU one), so only initialize default target,
-        // as long as we don't support cross-compilation (yet).
-        Target::initialize_native(&InitializationConfig::default())?;
+        if let Some(tt) = target_triple_option {
+            target_triple = TargetTriple::create(tt.as_str());
+            Target::initialize_all(&InitializationConfig::default());
+        } else {
+            target_triple = TargetMachine::get_default_triple();
+            Target::initialize_native(&InitializationConfig::default())?;
+        }
 
-        let target = Target::from_triple(&target_triple).unwrap();
+        let target = Target::from_triple(&target_triple)?;
 
         target
             .create_target_machine(
@@ -103,7 +107,7 @@ impl<'ctx> Compiler<'ctx> {
     //* ------------------------ *//
 
     /// Create a new compiler instance
-    pub fn new(context: &'ctx Context) -> Self {
+    pub fn new(context: &'ctx Context, target: Option<String>) -> IRResult<Self> {
         let module = context.create_module("main_module");
         let builder = context.create_builder();
 
@@ -127,9 +131,9 @@ impl<'ctx> Compiler<'ctx> {
         let int_reference_attribute = context.create_enum_attribute(attr_id, std::mem::size_of::<AlanIntType>() as u64);
         let char_reference_attribute = context.create_enum_attribute(attr_id, 1 as u64);
 
-        let target = Self::generate_target(None, None, None).unwrap();
+        let target = Self::generate_target(target, None, None, None)?;
 
-        Self {
+        Ok(Self {
             context: context,
             builder: builder,
             module: module,
@@ -147,7 +151,7 @@ impl<'ctx> Compiler<'ctx> {
             const_zero: const_zero,
             int_reference_attribute: int_reference_attribute,
             char_reference_attribute: char_reference_attribute,
-        }
+        })
     }
 
     /// Compile the program into LLVM IR

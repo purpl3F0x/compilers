@@ -67,8 +67,10 @@ Run the program with `-h/--help` and you'll learn everything you need to know, o
 Run it with `--version`, if you want to chase some dragons. 
 
 ## Features ✨
+- Cross Compilation (yes, you can compile for CUDA 🙌)
+
 - (Ridiculously) fast lexing, using [Logos](https://github.com/maciejhirsz/logos)
-    
+
 - Errors made for humans, thanks to [chumsky](https://github.com/zesterer/chumsky) parser combinator + [ariadne](https://github.com/zesterer/ariadne)
     - ![alt text](./assets/error_example_parse.png)
     - ![alt text](./assets/error_example_sem1.png)
