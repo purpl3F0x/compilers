@@ -68,7 +68,7 @@ impl<'ctx> Compiler<'ctx> {
 
     /// Get the target triple of the system f.ex. x86_64-unknown-linux-gnu
     pub fn system_triple() -> String {
-        TargetMachine::get_default_triple().to_string()
+        String::from_utf8_lossy(TargetMachine::get_default_triple().as_str().to_bytes()).to_string()
     }
 
     /// Generate a target machine with the given options
@@ -270,7 +270,7 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     pub fn get_target_tuple(&self) -> String {
-        self.target.get_triple().to_string()
+        String::from_utf8_lossy(self.target.get_triple().as_str().to_bytes()).to_string()
     }
 
     pub fn generate_binary(&self, _output_file: &str) -> IRResult<()> {
