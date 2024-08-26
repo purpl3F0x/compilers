@@ -593,7 +593,7 @@ impl<'ctx> Compiler<'ctx> {
 
                 let element_pointer = match pointer_ty {
                     AnyTypeEnum::IntType(t) => unsafe {
-                        self.builder.build_in_bounds_gep(t, ptr, &[self.const_zero, expr_res], format!("idx.{}", id).as_str())
+                        self.builder.build_in_bounds_gep(t, ptr, &[expr_res], format!("idx.{}", id).as_str())
                     },
                     AnyTypeEnum::ArrayType(t) => unsafe {
                         self.builder.build_in_bounds_gep(t, ptr, &[self.const_zero, expr_res], format!("idx.{}", id).as_str())
