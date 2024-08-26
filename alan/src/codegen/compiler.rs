@@ -913,7 +913,9 @@ impl<'ctx> Compiler<'ctx> {
                         }
                         .into());
                     }
-                    self.builder.build_return(Some(&expr_res))?;
+
+                    let res = self.cgen_int_value_or_load(expr_res, &expr_ty, expr.span)?;
+                    self.builder.build_return(Some(&res))?;
                 } else {
                     if self.current_function_return_type.is_void() {
                         self.builder.build_return(None)?;
