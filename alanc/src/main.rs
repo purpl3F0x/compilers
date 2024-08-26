@@ -9,12 +9,12 @@ use alan::lexer::*;
 use alan::parser::parse_function;
 use alan::Parser as alanParser;
 
-use std::process::exit;
+use yansi::Paint;
 
 use std::io::{stdin, Error as ioError, Read};
+use std::process::exit;
 
 fn handle_io_error(err: ioError, what: Option<&str>) -> ! {
-    use yansi::Paint;
     eprint!("{} {}", "error:".red().bold(), err);
     if let Some(what) = what {
         eprint!("{}: {}", ", when attempting to access: ", what.bold());
@@ -33,12 +33,11 @@ fn main() {
     let mut src_buffer = String::new();
     let src_file_name;
 
-    let mut imm_file_name: String = String::new();
+    let mut imm_file_name = String::new();
     let mut asm_file_name = String::new();
+    let mut outfile_name = String::new();
 
-    /*
-    Open source file and create output files
-    */
+    // *Open source file and create output files
     if let Some(src_file) = args.src_file {
         src_buffer = std::fs::read_to_string(&src_file).unwrap_or_else(|err| {
             handle_io_error(err, src_file.as_path().to_str());
@@ -47,22 +46,22 @@ fn main() {
 
         // Create output files
         // Use set_extension instead of with_extension, so it doesn't produce ..imm/.asm in files without extension
-        let mut imm_file_path = src_file.clone();
-        let mut asm_file_path = src_file.clone();
-        imm_file_path.set_extension("imm");
-        asm_file_path.set_extension("asm");
+        let imm_file_path = src_file.with_extension("imm");
+        let asm_file_path = src_file.with_extension("asm");
+        let outfile_path = src_file.with_extension("exe");
 
-        imm_file_name = imm_file_path.display().to_string();
-        asm_file_name = asm_file_path.display().to_string();
+        imm_file_name = imm_file_path.file_name().unwrap().to_str().unwrap().to_string();
+        asm_file_name = asm_file_path.file_name().unwrap().to_str().unwrap().to_string();
+        outfile_name = outfile_path.file_name().unwrap().to_str().unwrap().to_string();
     } else if args.stdio {
         src_file_name = "stdin".to_string();
-        println!("Reading from stdin and writing to stdout");
+        println!("Reading from stdin and writing to stdout...");
         stdin().read_to_string(&mut src_buffer).unwrap_or_else(|err| {
             handle_io_error(err, Some("stdin"));
         });
     } else if args.stdio_intermediate {
         src_file_name = "stdin".to_string();
-        println!("Reading from stdin and writing intermediate code to stdout");
+        println!("Reading from stdin and writing intermediate code to stdout...");
         stdin().read_to_string(&mut src_buffer).unwrap_or_else(|err| {
             handle_io_error(err, Some("stdin"));
         });
@@ -146,9 +145,20 @@ fn main() {
         }
     }
 
-    //* compile files with clang
+    //* Link files with clang
+    let libalan_path = std::env::current_exe().unwrap().parent().unwrap().join("libalan.a");
+
     let compile_cmd = std::process::Command::new("clang")
-        .args(&["-o", "a.exe", &asm_file_name, "libalan.a"])
+        .args(&["-o", outfile_name.as_str(), &asm_file_name, libalan_path.to_str().unwrap()])
         .output()
         .expect("failed to compile, make sure clang is installed");
+
+    if !compile_cmd.status.success() {
+        eprintln!("{}", "Compilation failed".red());
+        eprintln!("{}", String::from_utf8_lossy(&compile_cmd.stderr));
+        exit(1);
+    }
+
+    //* Done
+    eprintln!("{}", "Compilation was successful".green());
 }
