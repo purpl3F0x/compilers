@@ -377,7 +377,7 @@ impl<'ctx> Compiler<'ctx> {
                     "readInteger" => register_function!("readInteger", func_value, IRType::Int, vec![]),
                     "readByte" => register_function!("readByte", func_value, IRType::Byte, vec![]),
                     "readChar" => register_function!("readChar", func_value, IRType::Byte, vec![]),
-                    "readString" => register_function!("readString", func_value, IRType::Reference(Box::new(IRType::Void)), vec![IRType::Reference(Box::new(IRType::Array(Box::new(IRType::Byte), -1)))]),
+                    "readString" => register_function!("readString", func_value, IRType::Void, vec![IRType::Int, IRType::Reference(Box::new(IRType::Array(Box::new(IRType::Byte), -1)))]),
                     // Type conversion functions
                     "extend" => register_function!("extend", func_value, IRType::Int, vec![IRType::Byte]),
                     "shrink" => register_function!("shrink", func_value, IRType::Byte, vec![IRType::Int]),
