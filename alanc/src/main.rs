@@ -138,9 +138,17 @@ fn main() {
         }
         FileMode::Stdio => {
             println!("{}", compiler.asm_as_string());
+            exit(0);
         }
         FileMode::StdioIntermediate => {
             println!("{}", compiler.imm_as_string());
+            exit(0);
         }
     }
+
+    //* compile files with clang
+    let compile_cmd = std::process::Command::new("clang")
+        .args(&["-o", "a.exe", &asm_file_name, "libalan.a"])
+        .output()
+        .expect("failed to compile, make sure clang is installed");
 }
