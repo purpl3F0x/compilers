@@ -26,20 +26,19 @@ mod tests {
         };
     }
 
-    #[test_case("hello", "hello"; "hello")]
     #[test_case("bsort", "bsort"; "bsort")]
     #[test_case("cancer", "cancer1"; "cancer-palindrome")]
     #[test_case("cancer", "cancer2"; "cancer-no-palindrome")]
     #[test_case("gcd", "gcd"; "gcd")]
     #[test_case("hanoi", "hanoi"; "hanoi")]
-    #[test_case("primes", "primes"; "primes")]
-    #[test_case("strrev", "strrev"; "strrev")]
-    #[test_case("powint", "powint"; "powint")]
-    #[test_case("knapsack", "knapsack"; "knapsack")]
+    #[test_case("hello", "hello"; "hello")]
     #[test_case("knapsack_recursive", "knapsack_recursive1"; "knapsack_recursive1")]
     #[test_case("knapsack_recursive", "knapsack_recursive1"; "knapsack_recursive2")]
+    #[test_case("knapsack", "knapsack"; "knapsack")]
     #[test_case("mergesort", "mergesort"; "mergesort")]
-
+    #[test_case("powint", "powint"; "powint")]
+    #[test_case("primes", "primes"; "primes")]
+    #[test_case("strrev", "strrev"; "strrev")]
 
     fn compilation_test(filename: &str, output_filename: &str) {
         let src_file = examples_dir!(filename);
