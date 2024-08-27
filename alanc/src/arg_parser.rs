@@ -79,9 +79,10 @@ pub struct Args {
     pub src_file: Option<PathBuf>,
 
     // ? add output file
-    // /// Place the output into <OUTPUT_FILE>
-    // #[arg(short, long, value_name = "OUTPUT_FILE",  requires = "src_file")]
-    // pub output: Option<String>,
+    /// Place the output into <OUTPUT_FILE>
+    #[arg(short, long, value_name = "OUTPUT_FILE", requires = "src_file")]
+    pub output: Option<String>,
+
     /// Enable optimizations
     #[arg(value_enum, short = 'O')]
     pub optimize: bool,

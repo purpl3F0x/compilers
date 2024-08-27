@@ -52,7 +52,11 @@ fn main() {
 
         imm_file_name = imm_file_path.file_name().unwrap().to_str().unwrap().to_string();
         asm_file_name = asm_file_path.file_name().unwrap().to_str().unwrap().to_string();
-        outfile_name = outfile_path.file_name().unwrap().to_str().unwrap().to_string();
+        if let Some(output) = args.output {
+            outfile_name = output;
+        } else {
+            outfile_name = outfile_path.file_name().unwrap().to_str().unwrap().to_string();
+        }
     } else if args.stdio {
         src_file_name = "stdin".to_string();
 
