@@ -31,6 +31,8 @@ mod tests {
     #[test_case("cancer", "cancer1"; "cancer-palindrome")]
     #[test_case("cancer", "cancer2"; "cancer-no-palindrome")]
     #[test_case("gcd", "gcd"; "gcd")]
+    #[test_case("hanoi", "hanoi"; "hanoi")]
+
     fn compilation_test(filename: &str, output_filename: &str) {
         let src_file = examples_dir!(filename);
         let res_file = result_dir!(output_filename);
