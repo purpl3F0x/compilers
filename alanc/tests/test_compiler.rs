@@ -33,6 +33,7 @@ mod tests {
     #[test_case("gcd", "gcd"; "gcd")]
     #[test_case("hanoi", "hanoi"; "hanoi")]
     #[test_case("primes", "primes"; "primes")]
+    #[test_case("strrev", "strrev"; "strrev")]
 
     fn compilation_test(filename: &str, output_filename: &str) {
         let src_file = examples_dir!(filename);
@@ -42,7 +43,7 @@ mod tests {
         let my_stdin = std::fs::read_to_string(input_file).unwrap_or("".to_string());
 
         let mut outfile_name = std::env::temp_dir();
-        outfile_name.push(filename);
+        outfile_name.push(output_filename);
         outfile_name.set_extension("out");
 
         //* Make the compilation
