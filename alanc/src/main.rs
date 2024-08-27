@@ -12,6 +12,7 @@ use alan::Parser as alanParser;
 use yansi::Paint;
 
 use std::io::{stdin, Error as ioError, Read};
+use std::path::PathBuf;
 use std::process::exit;
 
 fn handle_io_error(err: ioError, what: Option<&str>) -> ! {
@@ -50,12 +51,14 @@ fn main() {
         let asm_file_path = src_file.with_extension("asm");
         let outfile_path = src_file.with_extension("exe");
 
-        imm_file_name = imm_file_path.file_name().unwrap().to_str().unwrap().to_string();
-        asm_file_name = asm_file_path.file_name().unwrap().to_str().unwrap().to_string();
-        if let Some(output) = args.output {
-            outfile_name = output;
+        if let Some(output) = &args.output {
+            outfile_name = output.clone();
+            imm_file_name = PathBuf::from(output).with_extension("imm").file_name().unwrap().to_str().unwrap().to_string();
+            asm_file_name = PathBuf::from(output).with_extension("asm").file_name().unwrap().to_str().unwrap().to_string();
         } else {
             outfile_name = outfile_path.file_name().unwrap().to_str().unwrap().to_string();
+            imm_file_name = imm_file_path.file_name().unwrap().to_str().unwrap().to_string();
+            asm_file_name = asm_file_path.file_name().unwrap().to_str().unwrap().to_string();
         }
     } else if args.stdio {
         src_file_name = "stdin".to_string();
