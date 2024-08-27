@@ -47,17 +47,17 @@ fn main() {
 
         // Create output files
         // Use set_extension instead of with_extension, so it doesn't produce ..imm/.asm in files without extension
-        let imm_file_path = src_file.with_extension("imm");
-        let asm_file_path = src_file.with_extension("asm");
-        let outfile_path = src_file.with_extension("exe");
-
         if let Some(output) = &args.output {
             outfile_name = output.clone();
-            imm_file_name = PathBuf::from(output).with_extension("imm").file_name().unwrap().to_str().unwrap().to_string();
-            asm_file_name = PathBuf::from(output).with_extension("asm").file_name().unwrap().to_str().unwrap().to_string();
+            imm_file_name = PathBuf::from(output).with_extension("imm").display().to_string();
+            asm_file_name = PathBuf::from(output).with_extension("asm").display().to_string();
         } else {
-            outfile_name = outfile_path.file_name().unwrap().to_str().unwrap().to_string();
-            imm_file_name = imm_file_path.file_name().unwrap().to_str().unwrap().to_string();
+            let imm_file_path = src_file.with_extension("imm");
+            let asm_file_path = src_file.with_extension("asm");
+            let outfile_path = src_file.with_extension("exe");
+
+            outfile_name = outfile_path.file_name().unwrap().to_string_lossy().to_string();
+            imm_file_name = imm_file_path.file_name().unwrap().to_string_lossy().to_string();
             asm_file_name = asm_file_path.file_name().unwrap().to_str().unwrap().to_string();
         }
     } else if args.stdio {
