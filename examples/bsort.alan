@@ -46,14 +46,14 @@ main () : proc
    i    : int;
    
 { -- main
-   seed = 92233720368547758071;
+   seed = 65;
    i = 0;
    while (i < 16) {
-      seed = (seed * 137 + 220 + i) % 101;
+      seed = (seed * 137 + 221 + i) % 101;
       x[i] = seed;
       i = i+1;
    }
    writeArray("Initial array: ", 16, x);
    bsort(16, x);
-   writeArray("Sorted array: ", 16, x);
-} -- main   
+   writeArray("Sorted  array: ", 16, x);
+} -- main

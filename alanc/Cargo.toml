@@ -16,3 +16,6 @@ yansi = {version = "1.0.1", features = ["detect-env"]}
 
 [build-dependencies]
 shadow-rs = "0.30.0"
+
+[dev-dependencies]
+test-case = "*"
