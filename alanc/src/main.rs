@@ -156,7 +156,10 @@ fn main() {
     let libalan_path = std::env::current_exe().unwrap().parent().unwrap().join("libalan.a");
 
     let compile_cmd = std::process::Command::new("clang")
-        .args(&["-o", outfile_name.as_str(), &asm_file_name, libalan_path.to_str().unwrap()])
+        .arg("-o")
+        .arg(outfile_name.as_str())
+        .arg(&asm_file_name)
+        .arg(libalan_path.display().to_string())
         .output()
         .expect("failed to compile, make sure clang is installed");
 
