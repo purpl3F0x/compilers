@@ -4,6 +4,7 @@ mod tests {
         io::Write,
         process::{Command, Stdio},
     };
+    use tempfile::tempdir;
     use test_case::test_case;
 
     /// Macro to get the path of an example's source file
@@ -46,8 +47,9 @@ mod tests {
         let input_file = input_dir!(output_filename);
 
         let my_stdin = std::fs::read_to_string(input_file).unwrap_or("".to_string());
+        let tmp_dir = tempdir().expect("Failed to create tempdir");
 
-        let mut outfile_name = std::env::temp_dir();
+        let mut outfile_name = tmp_dir.path().to_path_buf();
         outfile_name.push(output_filename);
         outfile_name.set_extension("out");
 
@@ -78,5 +80,7 @@ mod tests {
         let expected_output = std::fs::read_to_string(res_file).unwrap();
 
         assert_eq!(stdout, expected_output);
+
+        tmp_dir.close().expect("Failed to delete tempdir");
     }
 }
