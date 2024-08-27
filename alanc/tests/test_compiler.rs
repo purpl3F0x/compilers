@@ -38,6 +38,8 @@ mod tests {
     #[test_case("knapsack", "knapsack"; "knapsack")]
     #[test_case("knapsack_recursive", "knapsack_recursive1"; "knapsack_recursive1")]
     #[test_case("knapsack_recursive", "knapsack_recursive1"; "knapsack_recursive2")]
+    #[test_case("mergesort", "mergesort"; "mergesort")]
+
 
     fn compilation_test(filename: &str, output_filename: &str) {
         let src_file = examples_dir!(filename);
