@@ -55,13 +55,13 @@ fn main() {
         outfile_name = outfile_path.file_name().unwrap().to_str().unwrap().to_string();
     } else if args.stdio {
         src_file_name = "stdin".to_string();
-        println!("Reading from stdin and writing to stdout...");
+
         stdin().read_to_string(&mut src_buffer).unwrap_or_else(|err| {
             handle_io_error(err, Some("stdin"));
         });
     } else if args.stdio_intermediate {
         src_file_name = "stdin".to_string();
-        println!("Reading from stdin and writing intermediate code to stdout...");
+
         stdin().read_to_string(&mut src_buffer).unwrap_or_else(|err| {
             handle_io_error(err, Some("stdin"));
         });

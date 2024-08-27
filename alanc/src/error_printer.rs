@@ -42,8 +42,8 @@ pub fn report_compiler_error(filename: &str, source: &str, error: &IRError) {
         IRError::SemanticError(e) => report_semantic_error(filename, source, e),
 
         _ => {
-            print!("{}", "Compilation Failed\nReason: ".fg(Color::Red));
-            print!("{}\n", error.fg(Color::Red));
+            eprint!("{}", "Compilation Failed\nReason: ".fg(Color::Red));
+            eprint!("{}\n", error.fg(Color::Red));
         }
     }
 }
