@@ -200,6 +200,7 @@ impl<'ctx> Compiler<'ctx> {
                     continue;
                 }
                 None => {
+                    self.builder.position_at_end(bb);
                     self.builder.build_return(None)?;
                 }
             }
