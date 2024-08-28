@@ -1,0 +1,21 @@
+main(): proc
+    x: int;
+    
+    level1(): proc
+        level2(): proc
+        {
+            writeInteger(x);
+            x = 17;
+        }
+    {
+        level2();
+        writeInteger(x);
+        x = 42;
+
+    }
+{
+    x = 1;
+    level1();
+    writeInteger(x);
+
+}

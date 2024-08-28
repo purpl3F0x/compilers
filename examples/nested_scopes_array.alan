@@ -1,0 +1,35 @@
+main(): proc
+    x: int[100];
+    i: int;
+    print_array(array: reference int[], len: int): proc
+        i: int;
+    {
+        if (len <= 0) return;
+        writeInteger(array[0]);
+        i = 1;
+        while (i < len) {
+            writeChar(' ');
+            writeInteger(array[i]);
+            i = i + 1;
+        }
+    }
+
+    fill_array(): proc
+        setter(i: int): proc
+        {
+            x[i] = i;
+        }
+        i: int;
+    {
+        i = 0;
+        while (i < 100) {
+            setter(i);
+            i = i + 1;
+        }
+    }
+{
+    fill_array();
+
+    print_array(x, 100);
+
+}
