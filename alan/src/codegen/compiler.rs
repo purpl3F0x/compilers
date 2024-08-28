@@ -731,13 +731,20 @@ impl<'ctx> Compiler<'ctx> {
         if let Some(captures) = func_captures {
             for (lval, _lval_ty) in captures.into_iter() {
                 // ! this needs some furter checking for arrays and nested references
-                let capture_ptr = self
+                let capture_entry = self
                     .lvalue_symbol_table
                     .get_from_last(lval)
                     .ok_or_else(|| IRError::String(format!("[Internal Error] Capture '{}' not found in the current scope", lval)))?; // todo: transform to internal error
 
-                let arg = capture_ptr.ptr;
-                args.push(arg.into());
+                if capture_entry.ty.is_reference() {
+                    let capture_ptr = self.builder.build_load(self.ptr_type, capture_entry.ptr, "deref")?;
+                    args.push(capture_ptr.into());
+                } else {
+                    args.push(capture_entry.ptr.into());
+                }
+
+                // let arg = capture_entry.ptr;
+                // args.push(arg.into());
             }
         }
 
@@ -1151,6 +1158,7 @@ impl<'ctx> Compiler<'ctx> {
                     IRType::Byte => {
                         function.add_attribute(inkwell::attributes::AttributeLoc::Param(pos as u32), self.char_reference_attribute)
                     }
+                    // todo: Add array deref attribute generator for arrays
                     _ => {}
                 };
             }
@@ -1175,19 +1183,29 @@ impl<'ctx> Compiler<'ctx> {
             let _capture_ptr = &capture_entry.ptr;
             let capture_ty = &capture_entry.ty;
 
-            let (_pos, param) = func_params_iter.next().unwrap();
+            let (pos, param) = func_params_iter.next().unwrap();
             param.set_name(capture);
-
             let mut ir_type = capture_ty.clone();
-
             if !ir_type.is_reference() {
                 ir_type = ir_type.into_reference_type();
             }
             let param_ptr = self.builder.build_alloca(self.ptr_type, format!("{}.capture", capture).as_str())?;
             self.builder.build_store(param_ptr, *param)?;
 
-            // todo: hint llvm ir for the dereference size
-            // param_ir_types.push(ir_type.clone());
+            // Hint llvm-ir that we have a reference
+            if ir_type.is_reference() {
+                match ir_type.get_inner_type().unwrap() {
+                    IRType::Int => {
+                        function.add_attribute(inkwell::attributes::AttributeLoc::Param(pos as u32), self.int_reference_attribute)
+                    }
+                    IRType::Byte => {
+                        function.add_attribute(inkwell::attributes::AttributeLoc::Param(pos as u32), self.char_reference_attribute)
+                    }
+                    // todo: Add array deref attribute generator for arrays
+                    _ => {}
+                };
+            }
+
             symbol_entry_capture_list.insert(capture, ir_type.clone());
             self.lvalue_symbol_table.try_insert(capture, LValueEntry::new(param_ptr, ir_type, capture_entry.span)).map_err(|_| {
                 IRError::String("[Internal Error] This shouldn't have happed - multiple captures with the same name".to_string())
