@@ -2,7 +2,7 @@ CC ?= clang
 CLANG ?= clang
 CFLAGS += -Wall -Werror -O3 -ffast-math -std=gnu17 -I.
 LIB_NAME = libalan.a
-TARGET_HOST := $(shell llvm-config --host-target)
+TARGET_TRIPLE ?= $(shell llvm-config --host-target)
 
 OUT_DIR ?= .
 
@@ -11,12 +11,12 @@ SRC = $(wildcard *.c)
 OBJ = $(SRC:.c=.o)
 
 ifeq ($(CC), clang)
-	CFLAGS += -Wno-incompatible-library-redeclaration 
+	CFLAGS += -Wno-incompatible-library-redeclaration --target=$(TARGET_TRIPLE)
 else
-	CFLAGS += -Wno-builtin-declaration-mismatch 
+	CFLAGS += -Wno-builtin-declaration-mismatch
 endif
 
-ifeq ($(findstring x86_64,$(TARGET_HOST)),x86_64)
+ifeq ($(findstring x86_64,$(TARGET_TRIPLE)),x86_64)
   CFLAGS += -march=x86-64-v2 -mtune=skylake
 endif
 
