@@ -491,14 +491,7 @@ impl<'ctx> Compiler<'ctx> {
                                 self.builder.build_int_signed_rem(lhs, rhs, "modtmp")
                             }
                         }
-                        InfixOperator::Equal => self.builder.build_int_compare(IntPredicate::EQ, lhs, rhs, "eqtmp"),
-                        InfixOperator::NotEqual => self.builder.build_int_compare(IntPredicate::NE, lhs, rhs, "neqtmp"),
-                        InfixOperator::Greater => self.builder.build_int_compare(IntPredicate::SGT, lhs, rhs, "gttmp"),
-                        InfixOperator::Less => self.builder.build_int_compare(IntPredicate::SLT, lhs, rhs, "lttmp"),
-                        InfixOperator::GreaterOrEqual => self.builder.build_int_compare(IntPredicate::SGE, lhs, rhs, "getmp"),
-                        InfixOperator::LessOrEqual => self.builder.build_int_compare(IntPredicate::SLE, lhs, rhs, "letmp"),
-                        InfixOperator::LogicAnd => self.builder.build_and(lhs, rhs, "andtmp"),
-                        InfixOperator::LogicOr => self.builder.build_or(lhs, rhs, "ortmp"),
+                        _ => panic!("should not get here"),
                     }?
                     .as_basic_value_enum(),
                     lhs_ty, // should be the same as rhs_ty
@@ -767,12 +760,6 @@ impl<'ctx> Compiler<'ctx> {
                 let rhs = self.cgen_condition(rhs)?;
 
                 Ok(match op {
-                    InfixOperator::Equal => self.builder.build_int_compare(IntPredicate::EQ, lhs, rhs, "eqtmp"),
-                    InfixOperator::NotEqual => self.builder.build_int_compare(IntPredicate::NE, lhs, rhs, "neqtmp"),
-                    InfixOperator::Greater => self.builder.build_int_compare(IntPredicate::SGT, lhs, rhs, "gttmp"),
-                    InfixOperator::Less => self.builder.build_int_compare(IntPredicate::SLT, lhs, rhs, "lttmp"),
-                    InfixOperator::GreaterOrEqual => self.builder.build_int_compare(IntPredicate::SGE, lhs, rhs, "getmp"),
-                    InfixOperator::LessOrEqual => self.builder.build_int_compare(IntPredicate::SLE, lhs, rhs, "letmp"),
                     InfixOperator::LogicAnd => self.builder.build_and(lhs, rhs, "andtmp"),
                     InfixOperator::LogicOr => self.builder.build_or(lhs, rhs, "ortmp"),
                     _ => panic!("Should not happen"),
