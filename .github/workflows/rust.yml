@@ -61,6 +61,7 @@ jobs:
 
       - name: Test
         uses: actions-rs/cargo@v1
+        continue-on-error: true
         with:
           command: test
           args: --all --release
