@@ -953,7 +953,7 @@ impl<'ctx> Compiler<'ctx> {
                     self.builder.position_at_end(else_block);
                     self.cgen_statement(else_.as_ref().unwrap())?;
                     // build unconditional branch to end block, if no return statement
-                    if else_block.get_terminator().is_none() {
+                    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
                         self.builder.build_unconditional_branch(end_block)?;
                     }
                 }
