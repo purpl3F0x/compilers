@@ -27,6 +27,7 @@ mod tests {
         };
     }
 
+    #[test_case("array_recursive_fill", "array_recursive_fill"; "array_recursive_fill")]
     #[test_case("bsort", "bsort"; "bsort")]
     #[test_case("cancer", "cancer1"; "cancer-palindrome")]
     #[test_case("cancer", "cancer2"; "cancer-no-palindrome")]
