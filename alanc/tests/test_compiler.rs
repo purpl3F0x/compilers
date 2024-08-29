@@ -27,6 +27,8 @@ mod tests {
         };
     }
 
+    #[test_case("answer", "answer17"; "answer17")]
+    #[test_case("answer", "answer42"; "answer42")]
     #[test_case("array_recursive_fill", "array_recursive_fill"; "array_recursive_fill")]
     #[test_case("bsort", "bsort"; "bsort")]
     #[test_case("cancer", "cancer1"; "cancer-palindrome")]
