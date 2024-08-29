@@ -152,13 +152,22 @@ fn main() {
         }
     }
 
+    //* Create the object file
+    let obj_filename: String = imm_file_name.replace(".imm", if compiler.target_is_windows() { ".obj" } else { ".o" });
+
+    let obj_res = compiler.generate_object(obj_filename.as_str());
+    if obj_res.is_err() {
+        eprintln!("{}", "Failed to generate object file".red());
+        exit(1);
+    }
+
     //* Link files with clang
     let libalan_path = std::env::current_exe().unwrap().parent().unwrap().join("libalan.a");
 
     let compile_cmd = std::process::Command::new("clang")
         .arg("-o")
         .arg(outfile_name.as_str())
-        .arg(&asm_file_name)
+        .arg(obj_filename.as_str())
         .arg(libalan_path.display().to_string())
         .output()
         .expect("failed to compile, make sure clang is installed");

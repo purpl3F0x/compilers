@@ -273,8 +273,12 @@ impl<'ctx> Compiler<'ctx> {
         String::from_utf8_lossy(self.target.get_triple().as_str().to_bytes()).to_string()
     }
 
-    pub fn generate_binary(&self, _output_file: &str) -> IRResult<()> {
-        unimplemented!("Option to generate binary isn't implemented yet!");
+    pub fn generate_object(&self, output_file: &str) -> IRResult<()> {
+        self.target.write_to_file(&self.module, inkwell::targets::FileType::Object, Path::new(output_file)).map_err(|e| e.into())
+    }
+
+    pub fn target_is_windows(&self) -> bool {
+        self.target.get_feature_string().to_str().unwrap().contains("win")
     }
 
     //* ------------------------ *//
