@@ -959,7 +959,7 @@ impl<'ctx> Compiler<'ctx> {
                 //* Build then block
                 self.builder.position_at_end(then_block);
                 self.cgen_statement(then)?;
-                if then_block.get_terminator().is_none() {
+                if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
                     self.builder.build_unconditional_branch(end_block)?;
                 }
 
@@ -991,21 +991,20 @@ impl<'ctx> Compiler<'ctx> {
                 let while_body = self.context.append_basic_block(current_function, "while.body");
                 let while_end = self.context.append_basic_block(current_function, "while.end");
 
-                // Build condition block
-
+                //* Build condition block
                 self.builder.build_unconditional_branch(while_cond)?;
                 self.builder.position_at_end(while_cond);
 
                 let cond = self.cgen_condition(condition)?;
                 self.builder.build_conditional_branch(cond, while_body, while_end)?;
 
-                // Build body block
+                //* Build body block
                 self.builder.position_at_end(while_body);
                 self.cgen_statement(body)?;
 
                 self.builder.build_unconditional_branch(while_cond)?;
 
-                // Build end block
+                //* Build end block
                 self.builder.position_at_end(while_end);
             }
 
