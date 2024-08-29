@@ -1,7 +1,8 @@
-CC ?= gcc
+CC ?= clang
 CLANG ?= clang
-CFLAGS += -Wall -Werror -O3 -ffast-math -std=gnu17 -march=x86-64-v2 -mtune=haswell -I.
+CFLAGS += -Wall -Werror -O3 -ffast-math -std=gnu17 -I.
 LIB_NAME = libalan.a
+TARGET_HOST := $(shell llvm-config --host-target)
 
 OUT_DIR ?= .
 
@@ -13,6 +14,10 @@ ifeq ($(CC), clang)
 	CFLAGS += -Wno-incompatible-library-redeclaration 
 else
 	CFLAGS += -Wno-builtin-declaration-mismatch 
+endif
+
+ifeq ($(findstring x86_64,$(TARGET_HOST)),x86_64)
+  CFLAGS += -march=x86-64-v2 -mtune=skylake
 endif
 
 # Default target
