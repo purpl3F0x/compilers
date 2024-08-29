@@ -37,6 +37,7 @@ mod tests {
     #[test_case("knapsack_recursive", "knapsack_recursive1"; "knapsack_recursive1")]
     #[test_case("knapsack_recursive", "knapsack_recursive1"; "knapsack_recursive2")]
     #[test_case("knapsack", "knapsack"; "knapsack")]
+    #[test_case("mergesort_recursive", "mergesort_recursive"; "mergesort_recursive")]
     #[test_case("mergesort", "mergesort"; "mergesort")]
     #[test_case("nested_scopes_array", "nested_scopes_array"; "nested_scopes_array")]
     #[test_case("nested_scopes_int", "nested_scopes_int"; "nested_scopes_int")]
