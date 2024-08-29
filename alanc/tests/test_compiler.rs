@@ -31,6 +31,7 @@ mod tests {
     #[test_case("bsort", "bsort"; "bsort")]
     #[test_case("cancer", "cancer1"; "cancer-palindrome")]
     #[test_case("cancer", "cancer2"; "cancer-no-palindrome")]
+    #[test_case("fizzbuzz", "fizzbuzz"; "fizzbuzz")]
     #[test_case("gcd", "gcd"; "gcd")]
     #[test_case("hanoi", "hanoi"; "hanoi")]
     #[test_case("hello", "hello"; "hello")]
@@ -43,6 +44,7 @@ mod tests {
     #[test_case("nested_scopes_int", "nested_scopes_int"; "nested_scopes_int")]
     #[test_case("powint", "powint"; "powint")]
     #[test_case("primes", "primes"; "primes")]
+    #[test_case("sieve", "sieve"; "sive")]
     #[test_case("strrev", "strrev"; "strrev")]
 
     fn compilation_test(filename: &str, output_filename: &str) {
