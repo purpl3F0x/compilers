@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::collections::HashMap;
 use std::path::Path;
 
 use super::scope::{Scope, Scopes};
@@ -722,24 +721,23 @@ impl<'ctx> Compiler<'ctx> {
         //* Pass cacptures to the function
         //* Practically we could save the ptr in the symbol table, when building the function
         //* But this is safer, and prefered for now
-        if let Some(captures) = func_captures {
-            for (lval, _lval_ty) in captures.into_iter() {
-                // ! this needs some furter checking for arrays and nested references
-                let capture_entry = self
-                    .lvalue_symbol_table
-                    .get_from_last(lval)
-                    .ok_or_else(|| IRError::String(format!("[Internal Error] Capture '{}' not found in the current scope", lval)))?; // todo: transform to internal error
+        for (lval, _lval_ty) in func_captures.iter() {
+            // ! this needs some furter checking for arrays and nested references
 
-                if capture_entry.ty.is_reference() {
-                    let capture_ptr = self.builder.build_load(self.ptr_type, capture_entry.ptr, "deref")?;
-                    args.push(capture_ptr.into());
-                } else {
-                    args.push(capture_entry.ptr.into());
-                }
+            let capture_entry = self
+                .lvalue_symbol_table
+                .get_from_last(lval)
+                .ok_or_else(|| IRError::String(format!("[Internal Error] Capture '{}' not found in the current scope", lval)))?; // todo: transform to internal error
 
-                // let arg = capture_entry.ptr;
-                // args.push(arg.into());
+            if capture_entry.ty.is_reference() {
+                let capture_ptr = self.builder.build_load(self.ptr_type, capture_entry.ptr, "deref")?;
+                args.push(capture_ptr.into());
+            } else {
+                args.push(capture_entry.ptr.into());
             }
+
+            // let arg = capture_entry.ptr;
+            // args.push(arg.into());
         }
 
         let call = self.builder.build_call(
@@ -1164,7 +1162,7 @@ impl<'ctx> Compiler<'ctx> {
         }
 
         //* Build captures
-        let mut symbol_entry_capture_list: HashMap<&'ctx str, IRType> = HashMap::new();
+        let mut symbol_entry_capture_list: Vec<(&'ctx str, IRType)> = Vec::with_capacity(captures.len());
 
         for (capture, capture_entry) in captures.iter() {
             let _capture_ptr = &capture_entry.ptr;
@@ -1172,6 +1170,7 @@ impl<'ctx> Compiler<'ctx> {
 
             let (pos, param) = func_params_iter.next().unwrap();
             param.set_name(capture);
+
             let mut ir_type = capture_ty.clone();
             if !ir_type.is_reference() {
                 ir_type = ir_type.into_reference_type();
@@ -1193,7 +1192,7 @@ impl<'ctx> Compiler<'ctx> {
                 };
             }
 
-            symbol_entry_capture_list.insert(capture, ir_type.clone());
+            symbol_entry_capture_list.push((capture, ir_type.clone()));
             self.lvalue_symbol_table.try_insert(capture, LValueEntry::new(param_ptr, ir_type, capture_entry.span)).map_err(|_| {
                 IRError::String("[Internal Error] This shouldn't have happed - multiple captures with the same name".to_string())
             })?;

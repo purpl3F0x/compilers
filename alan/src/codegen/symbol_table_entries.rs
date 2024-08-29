@@ -1,6 +1,5 @@
 use super::irtype::IRType;
 use super::Span;
-use std::collections::HashMap;
 
 use inkwell::values::{FunctionValue, PointerValue};
 
@@ -23,7 +22,8 @@ pub struct FunctionEntry<'ctx> {
     pub function: FunctionValue<'ctx>,
     pub return_ty: IRType,
     pub param_tys: Vec<IRType>,
-    pub captures: Option<HashMap<&'ctx str, IRType>>,
+    /// The captures of the function, this needs to be a vector instead of a hashmap because the order of the captures is important!
+    pub captures: Box<Vec<(&'ctx str, IRType)>>,
     pub is_stdlib: bool,
     /// The span of the declaration of the function
     /// (stdlib/extern) functions have a span of 0,  0) - to avoid wasting memory for Option<Span>
@@ -36,11 +36,11 @@ impl<'ctx> FunctionEntry<'ctx> {
         function: FunctionValue<'ctx>,
         return_ty: IRType,
         param_tys: Vec<IRType>,
-        captures: HashMap<&'ctx str, IRType>,
+        captures: Vec<(&'ctx str, IRType)>,
         span: Span,
         ret_ty_span: Span,
     ) -> FunctionEntry<'ctx> {
-        FunctionEntry { function, return_ty, param_tys, captures: Some(captures), is_stdlib: false, span, ret_ty_span }
+        FunctionEntry { function, return_ty, param_tys, captures: Box::new(captures), is_stdlib: false, span, ret_ty_span }
     }
 
     pub fn new_extern(function: FunctionValue<'ctx>, return_ty: IRType, param_tys: Vec<IRType>) -> FunctionEntry<'ctx> {
@@ -48,7 +48,7 @@ impl<'ctx> FunctionEntry<'ctx> {
             function,
             return_ty,
             param_tys,
-            captures: None,
+            captures: Box::new(vec![]),
             is_stdlib: true,
             span: Span::new(0, 0),
             ret_ty_span: Span::new(0, 0),
@@ -56,11 +56,7 @@ impl<'ctx> FunctionEntry<'ctx> {
     }
 
     pub fn total_num_params(&self) -> usize {
-        if let Some(captures) = &self.captures {
-            self.param_tys.len() + captures.len()
-        } else {
-            self.param_tys.len()
-        }
+        self.param_tys.len() + self.captures.len()
     }
 
     pub fn signature_string(&self) -> String {
