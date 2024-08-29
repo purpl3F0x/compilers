@@ -16,7 +16,8 @@ main(): proc
 
     fill_array(): proc
     {
-        if (i > 100) return;
+        if (i >= 100) return;
+
         x[i] = i;
         i = i + 1;
         fill_array();
