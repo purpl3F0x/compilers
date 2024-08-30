@@ -31,7 +31,15 @@ pub fn report_parse_error(filename: &str, source: &str, error: &alan::Rich<Token
     } else {
         report = report
             .with_message(format!("{}", "Unexpected token".fg(Color::Red)))
-            .with_label(Label::new((&filename, span_range)).with_message(format!("{}", reason)).with_color(Color::Red));
+            .with_label(
+                Label::new((&filename, span_range))
+                    .with_message(format!("{}", reason).fg(Color::Red))
+                    .with_color(Color::Red)
+                    .with_order(100),
+            )
+            .with_labels(error.contexts().take(2).map(|(label, span)| {
+                Label::new((&filename, span.into_range())).with_message(format!("while parsing this {}", label)).with_color(Color::Blue)
+            }));
     }
 
     report.finish().eprint((&filename, Source::from(source))).unwrap();

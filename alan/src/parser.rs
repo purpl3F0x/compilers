@@ -28,7 +28,7 @@ where
 
     let lvalue = string_const.or(subscript).or(single_ident);
 
-    lvalue.labelled("l-value").as_context()
+    lvalue.labelled("l-value")
 }
 
 pub fn parse_fncall<'src, I>() -> impl Parser<'src, I, FnCallAST<'src>, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
@@ -95,8 +95,7 @@ where
             .or(subscript)
             .or(single_ident)
             .map_with(|kind, e| ExprAST { kind: ExprKind::LValue(kind), span: e.span() })
-            .labelled("l-value")
-            .as_context();
+            .labelled("l-value");
 
         let fn_call_into_expr = call.map_with(|call, e| ExprAST { kind: ExprKind::FunctionCall(call), span: e.span() });
 
@@ -142,7 +141,7 @@ where
             |lhs, (op, rhs), e| ExprAST { kind: ExprKind::InfixOp { lhs: Box::new(lhs), op, rhs: Box::new(rhs) }, span: e.span() },
         );
 
-        sum.labelled("expression").as_context()
+        sum.labelled("expression")
     })
 }
 
@@ -281,17 +280,10 @@ where
             .or_not()
             .delimited_by(just(Token::Return), stmt_end.clone())
             .map_with(|expr, e| StatementAST { kind: StatementKind::Return(expr), span: e.span() })
-            .labelled("return statement");
+            .labelled("return statement")
+            .as_context();
 
-        assignment
-            .or(compound_stmt_inner)
-            .or(call)
-            .or(if_else)
-            .or(while_)
-            .or(return_)
-            .padded_by(null_stmt)
-            .labelled("statement")
-            .as_context()
+        assignment.or(compound_stmt_inner).or(call).or(if_else).or(while_).or(return_).padded_by(null_stmt).labelled("statement")
     })
 }
 
@@ -311,7 +303,7 @@ where
         )))
         .labelled("compound statement");
 
-    compound_stmt.labelled("compound statement").as_context()
+    compound_stmt.labelled("compound statement")
 }
 
 pub fn parse_function<'src, I>() -> impl Parser<'src, I, FunctionAST<'src>, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
