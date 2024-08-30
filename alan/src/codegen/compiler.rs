@@ -278,7 +278,7 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     pub fn target_is_windows(&self) -> bool {
-        self.target.get_feature_string().to_str().unwrap().contains("win")
+        self.target.get_feature_string().to_str().unwrap().contains("windows")
     }
 
     //* ------------------------ *//
