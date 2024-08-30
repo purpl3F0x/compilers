@@ -20,7 +20,11 @@ ___
 ## Build Instructions 🛠️
 (Not as detailed as IKEA's furnishes)
 
+Pre-build linux binaries are available, in the actions tab.
+
 ### Requirements
+
+A pre-configured [Dockerfile](https://gist.github.com/purpl3F0x/786ceaffcd16508ae90bfa60921521b4) and an image in [docker-hub](https://hub.docker.com/r/asder/alan-image) that is (somewhat) tested can be used to easily build and test the project.
 
 #### LLVM - Clang
 The project is requires and pre-configured to use LLVM 18.
@@ -29,6 +33,15 @@ If llvm is not in the default path `LLVM_SYS_180_PREFIX` should be set. <br>
 If you want to use any other version of llvm, [Cargo.toml](./alan/Cargo.toml) of alan crate should be configured accordingly.
 
 In addition, llvm-sys will <u>**try**</u> to link llvm statically, (platforms such Arch will be built with dynamic llvm libraries)
+
+In sort, in order to fully build and run the compiler. The following should be available (without version prefixes or as symlinks).
+- llvm-config
+- llvm-as
+- clang
+
+Also (for compiling the stdlib):
+- make
+
 
 ### Building
 
@@ -92,7 +105,7 @@ Run it with `--version`, if you want to chase some dragons.
     }
 
 ### ToDo
-- [ ] Cross compilation
+- [X] Cross compilation (partially working)
 - [ ] Warnings
 
 ##
