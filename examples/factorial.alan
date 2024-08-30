@@ -1,0 +1,16 @@
+main(): proc
+    factorial(n: int): int
+    {
+         if (n == 0)
+            return 1;
+        else 
+            return n * factorial(n - 1);
+    }
+    result: int;
+{
+    writeString("Enter a number: ");
+    result = factorial(readInteger());
+    writeString("Factorial: ");
+    writeInteger(result);
+    writeString("\n");
+}
