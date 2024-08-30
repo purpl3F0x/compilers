@@ -178,6 +178,9 @@ fn main() {
         exit(1);
     }
 
+    //* Clean up
+    std::fs::remove_dir_all(obj_filename).expect("failed to delete object file");
+
     //* Done
     eprintln!("{}", "Compilation was successful".green());
 }
