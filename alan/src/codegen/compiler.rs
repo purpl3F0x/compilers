@@ -157,6 +157,11 @@ impl<'ctx> Compiler<'ctx> {
     pub fn compile(&mut self, program: &'ctx FunctionAST) -> IRResult<()> {
         // ? Enhancement, allow main to have signature of (int argc, char[] argv) ?
 
+        //* Create the main function
+        // We will declare the main function before the top-level function, so llvm won't rename it to main.1 etc...
+        let main_type = self.int_type.fn_type(&[], false);
+        let main_func = self.module.add_function("main", main_type, None);
+
         //* Push a new scope, this will be the outer scope of the program, holding the stdlib functions
         self.function_symbol_table.push();
         self.load_stdlib()?;
@@ -174,26 +179,26 @@ impl<'ctx> Compiler<'ctx> {
             return Err(SemanticError::TopHasArguments { signature_span: program.signature_span }.into());
         }
 
-        //* Start creating main
-        let main_type = self.proc_type.fn_type(&[], false);
-        let main_func = self.module.add_function("main", main_type, None);
-        let basic_block = self.context.append_basic_block(main_func, "entry");
+        //* Start creating our top level function
+        let top_level_fn_type = self.proc_type.fn_type(&[], false);
+        let top_level_fn_value = self.module.add_function(program.name, top_level_fn_type, None);
+        let top_level_entry_bb = self.context.append_basic_block(top_level_fn_value, "entry");
 
-        self.builder.position_at_end(basic_block);
+        self.builder.position_at_end(top_level_entry_bb);
 
         //* Push new scope as we enter the main body now
         self.lvalue_symbol_table.push();
         self.function_symbol_table.push();
 
         self.cgen_locals(&program.locals)?;
-        self.builder.position_at_end(basic_block);
+        self.builder.position_at_end(top_level_entry_bb);
 
         //* Generate function body
         self.current_function_return_type = IRType::Void;
         self.cgen_statements(&program.body)?;
 
         //* Check if we need to build are return (hardcoded for main-void function)
-        for bb in main_func.get_basic_blocks() {
+        for bb in top_level_fn_value.get_basic_blocks() {
             match bb.get_terminator() {
                 Some(_) => {
                     continue;
@@ -204,6 +209,12 @@ impl<'ctx> Compiler<'ctx> {
                 }
             }
         }
+
+        //* Build the actual main function and call top-level function
+        let main_bb = self.context.append_basic_block(main_func, "entry");
+        self.builder.position_at_end(main_bb);
+        self.builder.build_call(top_level_fn_value, &[], "call_main")?;
+        self.builder.build_return(Some(&self.const_zero))?;
 
         self.basic_pass()
         // Ok(self.module.verify()?)

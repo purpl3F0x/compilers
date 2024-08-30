@@ -89,6 +89,7 @@ mod tests {
         let stdout = String::from_utf8_lossy(&run_cmd.stdout);
         let expected_output = std::fs::read_to_string(res_file).unwrap();
 
+        assert_eq!(run_cmd.status.code(), Some(0));
         assert_eq!(stdout, expected_output);
 
         tmp_dir.close().expect("Failed to delete tempdir");
