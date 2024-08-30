@@ -11,7 +11,8 @@ where
     let ident = select! {
        Token::Identifier(id) => id,
     }
-    .labelled("identifier");
+    .labelled("identifier")
+    .as_context();
 
     let subscript = ident
         .clone()
@@ -37,15 +38,17 @@ where
     let ident = select! {
        Token::Identifier(id) => id,
     }
-    .labelled("identifier");
+    .labelled("identifier")
+    .as_context();
 
     // A list of expressions
-    let items = parse_expr().separated_by(just(Token::Comma)).collect::<Vec<_>>();
+    let items = parse_expr().separated_by(just(Token::Comma)).collect::<Vec<_>>().labelled("function arguments").as_context();
 
     let call = ident
         .then(items.delimited_by(just(Token::ParenthesisOpen), just(Token::ParenthesisClose)))
         .map_with(|(name, args), e| FnCallAST { name, args, span: e.span() })
-        .labelled("function call");
+        .labelled("function call")
+        .as_context();
     call
 }
 
@@ -59,12 +62,14 @@ where
             Token::CharConst(c) => ExprKind::Literal(Literal::Byte(c)),
         }
         .map_with(|kind, e| ExprAST { kind, span: e.span() })
-        .labelled("literal");
+        .labelled("literal")
+        .as_context();
 
         let ident = select! {
            Token::Identifier(id) => id,
         }
-        .labelled("identifier");
+        .labelled("identifier")
+        .as_context();
 
         // A list of expressions
         let items = expr.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>();
@@ -179,10 +184,14 @@ where
             Token::GreaterOrEqual => InfixOperator::GreaterOrEqual,
             Token::LessOrEqual => InfixOperator::LessOrEqual,
         };
-        let compare_operations = parse_expr().then(compare_op).then(parse_expr()).map_with(|((lhs, op), rhs), e| ConditionAST {
-            kind: ConditionKind::ExprComparison { lhs: Box::new(lhs), op, rhs: Box::new(rhs) },
-            span: e.span(),
-        });
+        let compare_operations = parse_expr()
+            .then(compare_op)
+            .then(parse_expr())
+            .map_with(|((lhs, op), rhs), e| ConditionAST {
+                kind: ConditionKind::ExprComparison { lhs: Box::new(lhs), op, rhs: Box::new(rhs) },
+                span: e.span(),
+            })
+            .labelled("comparison operation");
 
         let logic_and = prefix.clone().or(compare_operations.clone()).foldl_with(
             (select! {
@@ -221,15 +230,15 @@ where
 
         let null_stmt = stmt_end.clone().ignored().repeated();
 
-        let assigment = parse_lvalue()
+        let assignment = parse_lvalue()
             .then_ignore(just(Token::Assign))
             .then(parse_expr())
             .then_ignore(stmt_end.clone())
             .map_with(|(lvalue, expr), e| StatementAST { kind: StatementKind::Assignment { lvalue, expr }, span: e.span() })
             .boxed()
-            .labelled("assigment");
+            .labelled("assignment");
 
-        let compount_stmt_inner = stmt
+        let compound_stmt_inner = stmt
             .clone()
             .repeated()
             .collect::<Vec<_>>()
@@ -274,8 +283,8 @@ where
             .map_with(|expr, e| StatementAST { kind: StatementKind::Return(expr), span: e.span() })
             .labelled("return statement");
 
-        assigment
-            .or(compount_stmt_inner)
+        assignment
+            .or(compound_stmt_inner)
             .or(call)
             .or(if_else)
             .or(while_)
@@ -286,11 +295,11 @@ where
     })
 }
 
-pub fn parse_compont_stmt<'src, I>() -> impl Parser<'src, I, Vec<StatementAST<'src>>, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+pub fn parse_compound_stmt<'src, I>() -> impl Parser<'src, I, Vec<StatementAST<'src>>, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = SimpleSpan>,
 {
-    let compount_stmt = parse_stmt()
+    let compound_stmt = parse_stmt()
         .repeated()
         .collect::<Vec<_>>()
         .delimited_by(just(Token::BraceOpen), just(Token::BraceClose))
@@ -302,7 +311,7 @@ where
         )))
         .labelled("compound statement");
 
-    compount_stmt.labelled("compound statement").as_context()
+    compound_stmt.labelled("compound statement").as_context()
 }
 
 pub fn parse_function<'src, I>() -> impl Parser<'src, I, FunctionAST<'src>, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
@@ -313,20 +322,22 @@ where
         let ident = select! {
            Token::Identifier(id) => id,
         }
-        .labelled("identifier");
+        .labelled("identifier")
+        .as_context();
 
         let data_type = select! {
             Token::Int => TypeKind::Int,
             Token::Byte => TypeKind::Byte,
-        }
-        .labelled("data-type");
+        };
 
         let data_type_mapped = data_type.map_with(|type_, e| (Type { kind: type_, span: e.span() }));
 
         let ftype = data_type
             .then_ignore(just(Token::BracketOpen).then(just(Token::BracketClose)))
             .map_with(|t, e| Type { kind: TypeKind::Array(Box::new(t)), span: e.span() })
-            .or(data_type_mapped);
+            .or(data_type_mapped)
+            .labelled("function type")
+            .as_context();
 
         let parameters_type = just(Token::Ref)
             .or_not()
@@ -336,27 +347,31 @@ where
                 Some(_) => Type { kind: TypeKind::Ref(Box::new(type_.kind)), span: e.span() },
                 None => type_,
             })
-            .labelled("parameter type");
+            .labelled("parameter type")
+            .as_context();
 
         let fparam = ident
             .clone()
             .then_ignore(just(Token::Colon))
             .then(parameters_type)
             .map_with(|(name, type_), e| VarDefAST { name, type_, span: e.span() })
-            .labelled("function parameter");
+            .labelled("function parameter")
+            .as_context();
 
         let fparams = fparam
             .separated_by(just(Token::Comma))
             .collect::<Vec<_>>()
             .delimited_by(just(Token::ParenthesisOpen), just(Token::ParenthesisClose))
-            .labelled("function parameters");
+            .labelled("function parameters")
+            .as_context();
 
         let r_type = data_type
             .or(select! {
                     Token::Proc => TypeKind::Void,
             })
             .map_with(|type_, e| Type { kind: type_, span: e.span() })
-            .labelled("return type");
+            .labelled("return type")
+            .as_context();
 
         let local_var_def = ident
             .clone()
@@ -379,7 +394,7 @@ where
             .then(r_type)
             .map_with(|((name, params), r_type), e| (name, params, r_type, e.span()))
             .then(locals)
-            .then(parse_compont_stmt())
+            .then(parse_compound_stmt())
             .map_with(|(((name, params, r_type, signature_span), locals), body), e| FunctionAST {
                 name,
                 r_type,
@@ -394,7 +409,7 @@ where
     })
 }
 
-// This parser will be used to parse the stdlib functions, and generate extern llvm binindings
+// This parser will be used to parse the stdlib functions, and generate extern llvm bindings
 // pub fn extern_func_parser<'src, I>(
 // ) -> impl Parser<'src, I, Vec<FunctionPrototypeAST<'src>>, extra::Err<Rich<'src, Token<'src>, Span>>>
 //        + Clone
