@@ -37,7 +37,7 @@ pub struct Compiler<'ctx> {
     lvalue_symbol_table: Scopes<&'ctx str, LValueEntry<'ctx>>,
     /// Function symbol table, holds the function definitions
     function_symbol_table: Scopes<&'ctx str, FunctionEntry<'ctx>>,
-    /// The return type of the current function being compiled, update it before statment cgen, so it doesn't get overwritten by a nested function def
+    /// The return type of the current function being compiled, update it before statement cgen, so it doesn't get overwritten by a nested function def
     current_function_return_type: IRType,
 
     // Types
@@ -155,7 +155,7 @@ impl<'ctx> Compiler<'ctx> {
 
     /// Compile the program into LLVM IR
     pub fn compile(&mut self, program: &'ctx FunctionAST) -> IRResult<()> {
-        // ? Enchancment, allow main to have signature of (int argc, char[] argv) ?
+        // ? Enhancement, allow main to have signature of (int argc, char[] argv) ?
 
         //* Push a new scope, this will be the outer scope of the program, holding the stdlib functions
         self.function_symbol_table.push();
@@ -285,7 +285,7 @@ impl<'ctx> Compiler<'ctx> {
     //*     Private Methods      *//
     //* ------------------------ *//
 
-    /// Comverts [ast::TypeKind](super::ast::TypeKind) to [IRType]
+    /// Converts [ast::TypeKind](super::ast::TypeKind) to [IRType]
     fn get_irtype(&self, type_: &TypeKind) -> IRType {
         match type_ {
             TypeKind::Int => IRType::Int,
@@ -325,7 +325,7 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    /// Convers from [inkwell::types::AnyTypeEnum] to [ast::TypeKind](super::ast::TypeKind)
+    /// Converts from [inkwell::types::AnyTypeEnum] to [ast::TypeKind](super::ast::TypeKind)
     fn type_to_any_type(&self, ty: &TypeKind) -> AnyTypeEnum<'ctx> {
         match ty {
             TypeKind::Int => self.int_type.into(),
@@ -400,7 +400,7 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     //* ------------------------ *//
-    //*      Coge Generation     *//
+    //*      Code Generation     *//
     //* ------------------------ *//
 
     /// Generate IR  for a [Literal]
@@ -412,7 +412,7 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     /// Generate IR for an [ExprAST]
-    fn cgen_expresion(&mut self, expr: &'ctx ExprAST) -> IRResult<(BasicValueEnum<'ctx>, IRType)> {
+    fn cgen_expression(&mut self, expr: &'ctx ExprAST) -> IRResult<(BasicValueEnum<'ctx>, IRType)> {
         match &expr.kind {
             ExprKind::Error => Err(IRError::UnknownError), // We should never get here
 
@@ -422,8 +422,8 @@ impl<'ctx> Compiler<'ctx> {
             }
 
             ExprKind::InfixOp { lhs: ref lhs_expr, op, rhs: ref rhs_expr } => {
-                let (lhs, lhs_ty) = self.cgen_expresion(lhs_expr)?;
-                let (rhs, rhs_ty) = self.cgen_expresion(rhs_expr)?;
+                let (lhs, lhs_ty) = self.cgen_expression(lhs_expr)?;
+                let (rhs, rhs_ty) = self.cgen_expression(rhs_expr)?;
 
                 let lhs = self.cgen_int_value_or_load(lhs, &lhs_ty, lhs_expr.span)?;
                 let rhs = self.cgen_int_value_or_load(rhs, &rhs_ty, rhs_expr.span)?;
@@ -445,7 +445,7 @@ impl<'ctx> Compiler<'ctx> {
                         _ => None,
                     };
 
-                    return Err(SemanticError::MissmatchExprTypes {
+                    return Err(SemanticError::MismatchExprTypes {
                         span: expr.span,
                         lhs: lhs_ty,
                         rhs: rhs_ty,
@@ -501,7 +501,7 @@ impl<'ctx> Compiler<'ctx> {
                 ))
             }
             ExprKind::PrefixOp { op, ref expr } => {
-                let (expr_value, expr_ty) = self.cgen_expresion(expr)?;
+                let (expr_value, expr_ty) = self.cgen_expression(expr)?;
 
                 let expr = self.cgen_int_value_or_load(expr_value, &expr_ty, expr.span)?;
 
@@ -562,7 +562,7 @@ impl<'ctx> Compiler<'ctx> {
             }
 
             LValueKind::ArraySubscript { id, expr } => {
-                let (expr_res, expr_ty) = self.cgen_expresion(expr)?;
+                let (expr_res, expr_ty) = self.cgen_expression(expr)?;
                 // todo: this needs to be converted to int
 
                 let expr_res = self.cgen_int_value_or_load(expr_res, &expr_ty, expr.span)?;
@@ -585,7 +585,7 @@ impl<'ctx> Compiler<'ctx> {
                         return Err(SemanticError::SubscriptingNonArray { span: lval.span, ty, decl_span: span }.into());
                     }
                 }
-                let iner_type: &IRType = ty.get_inner_type().unwrap();
+                let inner_type: &IRType = ty.get_inner_type().unwrap();
                 let pointer_ty = self.from_irtype(&ty);
 
                 let element_pointer = match pointer_ty {
@@ -602,7 +602,7 @@ impl<'ctx> Compiler<'ctx> {
                     _ => unreachable!(),
                 };
 
-                Ok(LValueEntry::new(element_pointer?, iner_type.clone(), span))
+                Ok(LValueEntry::new(element_pointer?, inner_type.clone(), span))
             }
         }
     }
@@ -647,7 +647,7 @@ impl<'ctx> Compiler<'ctx> {
 
         //* Check if the number of arguments match
         if func_params.len() != call_params.len() {
-            return Err(SemanticError::MissmatchedArgumentCount {
+            return Err(SemanticError::MismatchedArgumentCount {
                 span: fn_call.span,
                 expected: func_params.len(),
                 found: call_params.len(),
@@ -661,12 +661,12 @@ impl<'ctx> Compiler<'ctx> {
 
         //* Check if the types of the arguments match
         for (i, (param_ty, arg_expr)) in func_params.iter().zip(call_params.iter()).enumerate() {
-            let (mut arg, mut arg_ty) = self.cgen_expresion(arg_expr)?;
+            let (mut arg, mut arg_ty) = self.cgen_expression(arg_expr)?;
 
             match &param_ty {
                 //* Handle primitive types
                 IRType::Int | IRType::Byte => {
-                    let mut under_ty = &arg_ty; // We will use this as a placehold, if calle arg is a refernce we will use the inner type for the type checking
+                    let mut under_ty = &arg_ty; // We will use this as a placeholder, if calle arg is a reference we will use the inner type for the type checking
 
                     if arg_ty.is_reference() {
                         // Convert reference types to their inner type
@@ -718,7 +718,7 @@ impl<'ctx> Compiler<'ctx> {
                     }
                     args.push(arg.into())
                 }
-                _ => unreachable!("not implemented call"), // this should be unreachanble as we don't use pointers IRTypes, and Arrays should be references
+                _ => unreachable!("not implemented call"), // this should be unreachable as we don't use pointers IRTypes, and Arrays should be references
             }
         }
 
@@ -726,7 +726,7 @@ impl<'ctx> Compiler<'ctx> {
         //* Practically we could save the ptr in the symbol table, when building the function
         //* But this is safer, and prefered for now
         for (lval, _lval_ty) in func_captures.iter() {
-            // ! this needs some furter checking for arrays and nested references
+            // ! this needs some further checking for arrays and nested references
 
             let capture_entry = self
                 .lvalue_symbol_table
@@ -739,9 +739,6 @@ impl<'ctx> Compiler<'ctx> {
             } else {
                 args.push(capture_entry.ptr.into());
             }
-
-            // let arg = capture_entry.ptr;
-            // args.push(arg.into());
         }
 
         let call = self.builder.build_call(
@@ -778,8 +775,8 @@ impl<'ctx> Compiler<'ctx> {
             }
 
             ConditionKind::ExprComparison { lhs: ref lhs_expr, op, rhs: ref rhs_expr } => {
-                let (lhs, lhs_ty) = self.cgen_expresion(lhs_expr)?;
-                let (rhs, rhs_ty) = self.cgen_expresion(rhs_expr)?;
+                let (lhs, lhs_ty) = self.cgen_expression(lhs_expr)?;
+                let (rhs, rhs_ty) = self.cgen_expression(rhs_expr)?;
 
                 let mut lhs = self.cgen_int_value_or_load(lhs, &lhs_ty, lhs_expr.span)?;
                 let mut rhs = self.cgen_int_value_or_load(rhs, &rhs_ty, rhs_expr.span)?;
@@ -823,16 +820,16 @@ impl<'ctx> Compiler<'ctx> {
     fn cgen_statement(&mut self, stmt: &'ctx StatementAST) -> IRResult<()> {
         match &stmt.kind {
             StatementKind::Expr(e) => {
-                self.cgen_expresion(e)?;
+                self.cgen_expression(e)?;
             }
 
             StatementKind::Assignment { lvalue, expr } => {
                 if matches!(lvalue.kind, LValueKind::String(_)) {
                     return Err(SemanticError::AssignToString { span: stmt.span }.into());
                 }
-                // todo: this neeeds further checking
+                // todo: this needs further checking
                 let LValueEntry { ptr: mut lval_ptr, ty: mut lval_type, span } = self.cgen_lvalue_ptr(lvalue)?;
-                let (expr_value, expr_type): (BasicValueEnum<'ctx>, IRType) = self.cgen_expresion(expr)?;
+                let (expr_value, expr_type): (BasicValueEnum<'ctx>, IRType) = self.cgen_expression(expr)?;
 
                 if !lval_type.is_primitive() & !lval_type.is_primitive_reference() {
                     return Err(SemanticError::AssignTypeMismatch {
@@ -900,10 +897,10 @@ impl<'ctx> Compiler<'ctx> {
 
             StatementKind::Return(expr) => {
                 if let Some(expr) = expr {
-                    let (expr_res, expr_ty) = self.cgen_expresion(expr)?;
-                    // todo: add func delcaration to the error (see also bellow)
+                    let (expr_res, expr_ty) = self.cgen_expression(expr)?;
+                    // todo: add func declaration to the error (see also bellow)
                     if expr_ty != self.current_function_return_type {
-                        return Err(SemanticError::MissmatchedReturnType {
+                        return Err(SemanticError::MismatchedReturnType {
                             span: expr.span,
                             expected: self.current_function_return_type.clone(),
                             found: expr_ty,
@@ -917,8 +914,8 @@ impl<'ctx> Compiler<'ctx> {
                     if self.current_function_return_type.is_void() {
                         self.builder.build_return(None)?;
                     } else {
-                        // todo: add func delcaration to the error
-                        return Err(SemanticError::MissmatchedReturnType {
+                        // todo: add func declaration to the error
+                        return Err(SemanticError::MismatchedReturnType {
                             span: stmt.span,
                             expected: self.current_function_return_type.clone(),
                             found: IRType::Void,
@@ -929,7 +926,7 @@ impl<'ctx> Compiler<'ctx> {
             }
 
             StatementKind::If { condition, then, else_ } => {
-                // todo: chain if else, instead of recurscivly generating the statments to avoid multiple branches
+                // todo: chain if else, instead of recursively generating the statements to avoid multiple branches
                 let block = self.builder.get_insert_block().unwrap();
                 let current_function = block.get_parent().unwrap();
 
@@ -1084,7 +1081,7 @@ impl<'ctx> Compiler<'ctx> {
         self.lvalue_symbol_table.push();
 
         //* ------------------------ *//
-        //* Create function protoype *//
+        //* Create function prototype*//
         //* ------------------------ *//
         let return_type = self.type_to_any_type(&func.r_type.kind);
         //* Build function parameters
@@ -1227,7 +1224,7 @@ impl<'ctx> Compiler<'ctx> {
         self.function_symbol_table.push();
         self.cgen_locals(&func.locals)?;
 
-        //* Generte function body
+        //* Generate function body
         self.current_function_return_type = self.get_irtype(&func.r_type.kind);
         self.cgen_statements(&func.body)?;
 

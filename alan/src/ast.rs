@@ -45,7 +45,7 @@ pub enum InfixOperator {
     Mul,
     Div,
     Mod,
-    // Comparisson Operators
+    // Comparison Operators
     Equal,
     NotEqual,
     Greater,

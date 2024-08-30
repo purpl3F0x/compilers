@@ -11,14 +11,14 @@ Compiler of the Alan programming language, developed for the 8th semester's Comp
 [Stavros Avramidis](https://www.github.com/purpl3F0x)
 
 ___
-The project contains 3 subdirectories (subcrates).
+The project contains 3 subdirectories (sub-crates).
 - **[alan](./alan/)**: The compiler backend for the Alan language
 - **[alanc](./alanc/)**: The cli frontend of the compiler
-- **[stdlib](./stdlib/)**: The Alan standard library, writen in C (which at it's current state relies on libc, so we can target every plattform &/ architecture)
+- **[stdlib](./stdlib/)**: The Alan standard library, written in C (which at it's current state relies on libc, so we can target every platform &/ architecture)
 ___
 
 ## Build Instructions 🛠️
-(Not as detailed as IKEA furnitures)
+(Not as detailed as IKEA's furnishes)
 
 ### Requirements
 
@@ -28,7 +28,7 @@ The project is requires and pre-configured to use LLVM 18.
 If llvm is not in the default path `LLVM_SYS_180_PREFIX` should be set. <br>
 If you want to use any other version of llvm, [Cargo.toml](./alan/Cargo.toml) of alan crate should be configured accordingly.
 
-In addition, llvm-sys will <u>**try**</u> to link llvm staticaly, (platforms such Arch will be built with dynamic llvm libraries)
+In addition, llvm-sys will <u>**try**</u> to link llvm statically, (platforms such Arch will be built with dynamic llvm libraries)
 
 ### Building
 
@@ -80,7 +80,7 @@ Run it with `--version`, if you want to chase some dragons.
 ## Known Bugs ☠️
 - [ ] Parsing lower bound negative integer (f.ex -2147483648 for 32b ints)
 
-- [ ] Pour diagnostic messages (LLVM hard erroring), when putting expressions after confitional statemtments that all their branches return. For example
+- [ ] Pour diagnostic messages (LLVM hard erroring), when putting expressions after conditional statements that all their branches return. For example
     ```pl
     main() : proc
         x: int;

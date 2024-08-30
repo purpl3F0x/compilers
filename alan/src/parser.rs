@@ -43,7 +43,7 @@ where
     let items = parse_expr().separated_by(just(Token::Comma)).collect::<Vec<_>>();
 
     let call = ident
-        .then(items.delimited_by(just(Token::ParentheseisOpen), just(Token::ParentheseisClose)))
+        .then(items.delimited_by(just(Token::ParenthesisOpen), just(Token::ParenthesisClose)))
         .map_with(|(name, args), e| FnCallAST { name, args, span: e.span() })
         .labelled("function call");
     call
@@ -69,9 +69,9 @@ where
         // A list of expressions
         let items = expr.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>();
 
-        // Function calls have very high precedence so we prioritise them
+        // Function calls have very high precedence so we prioritize them
         let call = ident
-            .then(items.delimited_by(just(Token::ParentheseisOpen), just(Token::ParentheseisClose)))
+            .then(items.delimited_by(just(Token::ParenthesisOpen), just(Token::ParenthesisClose)))
             .map_with(|(name, args), e| FnCallAST { name, args, span: e.span() })
             .labelled("function call");
 
@@ -97,11 +97,11 @@ where
 
         let atom = literal
             // Atoms can also just be normal expressions, but surrounded with parentheses
-            .or(expr.clone().delimited_by(just(Token::ParentheseisOpen), just(Token::ParentheseisClose)))
-            // Attempt to recover anything that looks like a parenthesised expression but contains errors
+            .or(expr.clone().delimited_by(just(Token::ParenthesisOpen), just(Token::ParenthesisClose)))
+            // Attempt to recover anything that looks like a parenthesized expression but contains errors
             .recover_with(via_parser(nested_delimiters(
-                Token::ParentheseisOpen,
-                Token::ParentheseisClose,
+                Token::ParenthesisOpen,
+                Token::ParenthesisClose,
                 [(Token::BraceOpen, Token::BraceClose), (Token::BracketOpen, Token::BracketClose)],
                 |_| (ExprAST { kind: ExprKind::Error, span: Span::new(0, 0) }),
             )))
@@ -155,11 +155,11 @@ where
 
         let atom = bool_literal
             // Atoms can also just be normal expressions, but surrounded with parentheses
-            .or(cond.clone().delimited_by(just(Token::ParentheseisOpen), just(Token::ParentheseisClose)))
-            // Attempt to recover anything that looks like a parenthesised expression but contains errors
+            .or(cond.clone().delimited_by(just(Token::ParenthesisOpen), just(Token::ParenthesisClose)))
+            // Attempt to recover anything that looks like a parenthesized expression but contains errors
             .recover_with(via_parser(nested_delimiters(
-                Token::ParentheseisOpen,
-                Token::ParentheseisClose,
+                Token::ParenthesisOpen,
+                Token::ParenthesisClose,
                 [(Token::BraceOpen, Token::BraceClose), (Token::BracketOpen, Token::BracketClose)],
                 |_| (ConditionAST { kind: ConditionKind::Error, span: Span::new(0, 0) }),
             )))
@@ -238,7 +238,7 @@ where
             .recover_with(via_parser(nested_delimiters(
                 Token::BraceOpen,
                 Token::BraceOpen,
-                [(Token::ParentheseisOpen, Token::ParentheseisClose), (Token::BracketOpen, Token::BracketClose)],
+                [(Token::ParenthesisOpen, Token::ParenthesisClose), (Token::BracketOpen, Token::BracketClose)],
                 |_| StatementAST { kind: StatementKind::Error, span: Span::new(0, 0) },
             )))
             .boxed()
@@ -250,7 +250,7 @@ where
 
         let if_else = recursive(|if_| {
             just(Token::If)
-                .then(parse_condition().delimited_by(just(Token::ParentheseisOpen), just(Token::ParentheseisClose)))
+                .then(parse_condition().delimited_by(just(Token::ParenthesisOpen), just(Token::ParenthesisClose)))
                 .then(stmt.clone())
                 .then(just(Token::Else).ignore_then(stmt.clone().or(if_)).or_not())
                 .map_with(|(((_, condition), then), else_), e| StatementAST {
@@ -261,7 +261,7 @@ where
 
         let while_ = just(Token::While)
             .ignored()
-            .then(parse_condition().delimited_by(just(Token::ParentheseisOpen), just(Token::ParentheseisClose)))
+            .then(parse_condition().delimited_by(just(Token::ParenthesisOpen), just(Token::ParenthesisClose)))
             .then(stmt.clone())
             .map_with(|((_, condition), body), e| StatementAST {
                 kind: StatementKind::While { condition, body: Box::new(body) },
@@ -297,7 +297,7 @@ where
         .recover_with(via_parser(nested_delimiters(
             Token::BraceOpen,
             Token::BraceOpen,
-            [(Token::ParentheseisOpen, Token::ParentheseisClose), (Token::BracketOpen, Token::BracketClose)],
+            [(Token::ParenthesisOpen, Token::ParenthesisClose), (Token::BracketOpen, Token::BracketClose)],
             |_| vec![StatementAST { kind: StatementKind::Error, span: Span::new(0, 0) }],
         )))
         .labelled("compound statement");
@@ -348,7 +348,7 @@ where
         let fparams = fparam
             .separated_by(just(Token::Comma))
             .collect::<Vec<_>>()
-            .delimited_by(just(Token::ParentheseisOpen), just(Token::ParentheseisClose))
+            .delimited_by(just(Token::ParenthesisOpen), just(Token::ParenthesisClose))
             .labelled("function parameters");
 
         let r_type = data_type

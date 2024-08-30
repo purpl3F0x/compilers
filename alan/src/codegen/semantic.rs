@@ -23,7 +23,7 @@ pub enum SemanticError {
         ty: IRType,
         decl_span: Span,
     },
-    MissmatchedArgumentCount {
+    MismatchedArgumentCount {
         span: Span,
         expected: usize,
         found: usize,
@@ -63,7 +63,7 @@ pub enum SemanticError {
         decl_span: Span,
         ret_ty_span: Span,
     },
-    MissmatchedReturnType {
+    MismatchedReturnType {
         span: Span,
         expected: IRType,
         found: IRType,
@@ -93,7 +93,7 @@ pub enum SemanticError {
         ty: IRType,
     },
 
-    MissmatchExprTypes {
+    MismatchExprTypes {
         span: Span,
         lhs: IRType,
         rhs: IRType,

@@ -5,7 +5,7 @@ mod lexer_tests {
     use logos::Span;
 
     #[test]
-    fn test_identidiers() {
+    fn test_identifiers() {
         let tokens: Vec<_> = Token::lexer("foo foo42 foo_42 _foo_42_ foo42 42foo").spanned().collect();
         assert_eq!(
             tokens,
@@ -25,7 +25,7 @@ mod lexer_tests {
         let tokens: Vec<_> = Token::lexer("42 17 170000000000000000000000000000000000000").spanned().collect();
         assert_eq!(
             tokens,
-            &[(Ok(Token::NumberConst(42)), 0..2), (Ok(Token::NumberConst(17)), 3..5), (Err(LexingError::IntergerOverflow), 6..45),]
+            &[(Ok(Token::NumberConst(42)), 0..2), (Ok(Token::NumberConst(17)), 3..5), (Err(LexingError::IntegerOverflow), 6..45),]
         )
     }
 
@@ -85,8 +85,8 @@ mod lexer_tests {
                 (Ok(Token::Mod), 9..10),
                 (Ok(Token::BracketOpen), 11..12),
                 (Ok(Token::BracketClose), 12..13),
-                (Ok(Token::ParentheseisOpen), 14..15),
-                (Ok(Token::ParentheseisClose), 15..16),
+                (Ok(Token::ParenthesisOpen), 14..15),
+                (Ok(Token::ParenthesisClose), 15..16),
                 (Ok(Token::BraceOpen), 17..18),
                 (Ok(Token::BraceClose), 18..19),
                 (Ok(Token::Equals), 20..22),

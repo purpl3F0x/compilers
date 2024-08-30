@@ -116,7 +116,7 @@ pub fn report_semantic_error(filename: &str, source: &str, error: &SemanticError
                 );
         }
 
-        SemanticError::MissmatchedArgumentCount { span, expected, found, decl_span, func_signature } => {
+        SemanticError::MismatchedArgumentCount { span, expected, found, decl_span, func_signature } => {
             builder =
                 Report::build(ReportKind::Error, &filename, span.start).with_message(format!("Mismatched argument count")).with_label(
                     Label::new((&filename, span.into_range()))
@@ -192,7 +192,7 @@ pub fn report_semantic_error(filename: &str, source: &str, error: &SemanticError
             builder = Report::build(ReportKind::Error, &filename, span.start).with_message(format!("Mismatched types ")).with_label(
                 Label::new((&filename, span.into_range()))
                     .with_message(format!(
-                        "Assigment type mismatch, r-value has type of `{}`, but tried to assign to `{}`",
+                        "Assignment type mismatch, r-value has type of `{}`, but tried to assign to `{}`",
                         found.fg(Color::Red),
                         expected.fg(Color::Green)
                     ))
@@ -239,7 +239,7 @@ pub fn report_semantic_error(filename: &str, source: &str, error: &SemanticError
             }
         }
 
-        SemanticError::MissmatchedReturnType { span, expected, found } => {
+        SemanticError::MismatchedReturnType { span, expected, found } => {
             builder = Report::build(ReportKind::Error, &filename, span.start).with_message(format!("Mismatched return type")).with_label(
                 Label::new((&filename, span.into_range()))
                     .with_message(format!("Expected return type `{}`, found `{}`", expected.fg(Color::Green), found.fg(Color::Red)))
@@ -250,13 +250,13 @@ pub fn report_semantic_error(filename: &str, source: &str, error: &SemanticError
         SemanticError::RedeclaringIdentifier { span, name, decl_span } => {
             builder = Report::build(ReportKind::Error, &filename, span.start).with_message(format!("Redeclaring identifier")).with_label(
                 Label::new((&filename, span.into_range()))
-                    .with_message(format!("Redecleration of identifier `{}`", name).fg(Color::Red))
+                    .with_message(format!("Redeclaration of identifier `{}`", name).fg(Color::Red))
                     .with_color(Color::Red),
             );
 
             if decl_span.end > 0 {
                 builder = builder.with_label(
-                    Label::new((&filename, decl_span.into_range())).with_message(format!("already delcared here").fg(Color::Blue)),
+                    Label::new((&filename, decl_span.into_range())).with_message(format!("already declared here").fg(Color::Blue)),
                 );
             }
         }
@@ -264,13 +264,13 @@ pub fn report_semantic_error(filename: &str, source: &str, error: &SemanticError
         SemanticError::RedeclaringFunction { span, name, decl_span } => {
             builder = Report::build(ReportKind::Error, &filename, span.start).with_message(format!("Redeclaring function")).with_label(
                 Label::new((&filename, span.into_range()))
-                    .with_message(format!("Redecleration of function `{}`", name).fg(Color::Red))
+                    .with_message(format!("Redeclaration of function `{}`", name).fg(Color::Red))
                     .with_color(Color::Red),
             );
 
             if decl_span.end > 0 {
                 builder = builder.with_label(
-                    Label::new((&filename, decl_span.into_range())).with_message(format!("already delcared here").fg(Color::Blue)),
+                    Label::new((&filename, decl_span.into_range())).with_message(format!("already declared here").fg(Color::Blue)),
                 );
             }
         }
@@ -318,7 +318,7 @@ pub fn report_semantic_error(filename: &str, source: &str, error: &SemanticError
                 );
         }
 
-        SemanticError::MissmatchExprTypes { span, lhs, rhs, lhs_span, rhs_span, lhs_decl_span, rhs_decl_span } => {
+        SemanticError::MismatchExprTypes { span, lhs, rhs, lhs_span, rhs_span, lhs_decl_span, rhs_decl_span } => {
             builder = Report::build(ReportKind::Error, &filename, span.start)
                 .with_message(format!("Mismatched expression types"))
                 .with_label(
@@ -378,7 +378,7 @@ pub fn report_semantic_error(filename: &str, source: &str, error: &SemanticError
                 )
                 .with_label(
                     Label::new((&filename, span.into_range()))
-                        .with_message(format!("argument has type of array, but it's not passed as refernc `{}`", ty).fg(Color::Red))
+                        .with_message(format!("argument has type of array, but it's not passed as reference `{}`", ty).fg(Color::Red))
                         .with_color(Color::Yellow)
                         .with_order(1),
                 );

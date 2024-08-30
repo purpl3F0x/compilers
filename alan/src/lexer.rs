@@ -13,13 +13,13 @@ use likely_stable::{likely, unlikely};
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum LexingError {
     InvalidInteger,
-    IntergerOverflow,
+    IntegerOverflow,
 
     NonAsciiCharacter(Span),
     EmptyCharLiteral,
     InvalidEscapeCode,
 
-    UntermnatedStringLiteral,
+    UnterminatedStringLiteral,
 
     UnterminatedComment,
 
@@ -30,15 +30,15 @@ pub enum LexingError {
 #[derive(Logos, Clone, Debug, PartialEq)]
 #[logos(error = LexingError)]
 #[logos(skip r"[ \t\r\n\f]+")]
-#[logos(skip r"--[^\n]*" )] // Signle line comments
+#[logos(skip r"--[^\n]*" )] // Single line comments
 #[logos(skip r"\(\*(?:[^*]|\*[^\)])*\*\)")] // Multi line comments
 pub enum Token<'input> {
-    // Seperators
+    // Separators
     #[token("(")]
-    ParentheseisOpen,
+    ParenthesisOpen,
 
     #[token(")")]
-    ParentheseisClose,
+    ParenthesisClose,
 
     #[token("{")]
     BraceOpen,
@@ -148,7 +148,7 @@ pub enum Token<'input> {
     // todo: maybe ?? (?:(?:[\.\+\*\\\=])[\-\+])\d+
     NumberConst(IntType),
 
-    // Charater Constants
+    // Character Constants
     #[regex("'([^\']|\')'", |lex| lex.slice().chars().nth(1).to_owned())]
     #[regex(r"'\\.'", char_escape_code)]
     #[regex(r"'\\x[[:xdigit:]]{2}'", |lex| {
@@ -163,7 +163,7 @@ pub enum Token<'input> {
     #[regex(r#""([^\\\"]|[\\]["\\\/ntr0\'\"]|\\x[[:xdigit:]]{2})*""#, string_literal)]
     #[regex(
         r#""([^\\\"]|[\\]["\\\/ntr0\'\"]|\\x[[:xdigit:]]{2})*"#,
-        |_| Err(LexingError::UntermnatedStringLiteral)
+        |_| Err(LexingError::UnterminatedStringLiteral)
     )]
     StringConst(internment::Intern<String>),
 
@@ -247,7 +247,7 @@ impl From<ParseIntError> for LexingError {
     fn from(err: ParseIntError) -> Self {
         use std::num::IntErrorKind::*;
         match err.kind() {
-            PosOverflow | NegOverflow => LexingError::IntergerOverflow,
+            PosOverflow | NegOverflow => LexingError::IntegerOverflow,
             _ => LexingError::InvalidInteger,
         }
     }
@@ -257,7 +257,7 @@ impl LexingError {
     pub fn get_message(&self) -> String {
         use core::mem::size_of;
         match self {
-            Self::IntergerOverflow => {
+            Self::IntegerOverflow => {
                 format!("constant too large for type of Int(int{})", size_of::<IntType>() * 8,)
             }
             Self::LexerError => "Unexpected token".to_string(),
@@ -270,7 +270,7 @@ impl LexingError {
 
             Self::InvalidEscapeCode => "Invalid Escape Code".to_string(),
 
-            Self::UntermnatedStringLiteral => "Unterminated String Literal".to_string(),
+            Self::UnterminatedStringLiteral => "Unterminated String Literal".to_string(),
 
             Self::UnterminatedComment => "Unterminated Comment".to_string(),
         }
@@ -280,11 +280,11 @@ impl LexingError {
         match self {
             Self::InvalidEscapeCode => Some("Valid escape codes are: \\n, \\t, \\r, \\0, \\\\, \\\', \\\"".to_string()),
 
-            Self::UntermnatedStringLiteral => Some("String literals must be terminated with a double quote".to_string()),
+            Self::UnterminatedStringLiteral => Some("String literals must be terminated with a double quote".to_string()),
 
             Self::NonAsciiCharacter(_) => Some("Valid ascii characters are smaller than 128 (0x80)".to_string()),
 
-            Self::IntergerOverflow => {
+            Self::IntegerOverflow => {
                 use core::mem::size_of;
                 Some(format!("valid range is ({} to {})", IntType::MIN, IntType::MAX))
             }
@@ -296,8 +296,8 @@ impl LexingError {
 impl<'input> fmt::Display for Token<'input> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ParentheseisOpen => write!(f, "("),
-            Self::ParentheseisClose => write!(f, ")"),
+            Self::ParenthesisOpen => write!(f, "("),
+            Self::ParenthesisClose => write!(f, ")"),
             Self::BraceOpen => write!(f, "{{"),
             Self::BraceClose => write!(f, "}}"),
             Self::BracketOpen => write!(f, "["),
@@ -346,7 +346,7 @@ impl fmt::Display for LexingError {
         match self {
             LexingError::InvalidInteger => write!(f, "Invalid Integer"),
 
-            LexingError::IntergerOverflow => write!(f, "Invalid Interger Value"),
+            LexingError::IntegerOverflow => write!(f, "Invalid Integer Value"),
 
             LexingError::NonAsciiCharacter(_span) => write!(f, "Non-Ascii character"),
 
@@ -356,7 +356,7 @@ impl fmt::Display for LexingError {
 
             LexingError::InvalidEscapeCode => write!(f, "Invalid Escape Code"),
 
-            LexingError::UntermnatedStringLiteral => write!(f, "Unterminated String Literal"),
+            LexingError::UnterminatedStringLiteral => write!(f, "Unterminated String Literal"),
 
             LexingError::UnterminatedComment => write!(f, "Unterminated Comment"),
         }

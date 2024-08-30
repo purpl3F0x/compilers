@@ -36,7 +36,7 @@ fn main() {
 
     let mut imm_file_name = String::new();
     let mut asm_file_name = String::new();
-    let mut outfile_name = String::new();
+    let mut out_file_name = String::new();
 
     // *Open source file and create output files
     if let Some(src_file) = args.src_file {
@@ -48,7 +48,7 @@ fn main() {
         // Create output files
         // Use set_extension instead of with_extension, so it doesn't produce ..imm/.asm in files without extension
         if let Some(output) = &args.output {
-            outfile_name = output.clone();
+            out_file_name = output.clone();
             imm_file_name = PathBuf::from(output).with_extension("imm").display().to_string();
             asm_file_name = PathBuf::from(output).with_extension("asm").display().to_string();
         } else {
@@ -56,7 +56,7 @@ fn main() {
             let asm_file_path = src_file.with_extension("asm");
             let outfile_path = src_file.with_extension("exe");
 
-            outfile_name = outfile_path.file_name().unwrap().to_string_lossy().to_string();
+            out_file_name = outfile_path.file_name().unwrap().to_string_lossy().to_string();
             imm_file_name = imm_file_path.file_name().unwrap().to_string_lossy().to_string();
             asm_file_name = asm_file_path.file_name().unwrap().to_str().unwrap().to_string();
         }
@@ -166,7 +166,7 @@ fn main() {
 
     let compile_cmd = std::process::Command::new("clang")
         .arg("-o")
-        .arg(outfile_name.as_str())
+        .arg(out_file_name.as_str())
         .arg(obj_filename.as_str())
         .arg(libalan_path.display().to_string())
         .output()
