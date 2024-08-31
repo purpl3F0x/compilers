@@ -34,6 +34,7 @@ mod tests {
     #[test_case("cancer", "cancer1"; "cancer-palindrome")]
     #[test_case("cancer", "cancer2"; "cancer-no-palindrome")]
     #[test_case("factorial", "factorial"; "factorial")]
+    #[test_case("factors", "factors"; "factors")]
     #[test_case("fibonacci", "fibonacci"; "fibonacci")]
     #[test_case("fizzbuzz", "fizzbuzz"; "fizzbuzz")]
     #[test_case("gcd", "gcd"; "gcd")]

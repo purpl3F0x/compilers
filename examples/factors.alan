@@ -4,17 +4,29 @@ main() : proc
   flag : int;
 
 {
-  writeString("Enter value of N > ");
+  writeString("Please, give me a positive integer: ");
   n = readInteger();
-  lcv = 2; flag = 1;
+
+  lcv = 2;
+  flag = 1;
+
   while (lcv <= (n / 2))
   {
-    if ((n % lcv) == 0) {
-      if (flag != 0) { writeString("The non-trivial factors of "); writeInteger(n); writeString(" are: \n"); }
+    if ( (n % lcv) == 0) {
+
+        if (flag != 0) {
+            writeString("The non-trivial factors of ");
+            writeInteger(n); writeString(" are: \n");
+        }
+
       flag = 0;
-      writeInteger(lcv); writeChar('\n');
+      writeInteger(lcv);
+      writeChar('\n');
     }
+
     lcv = lcv + 1;
   }
+
   if (flag != 0 ) { writeInteger(n); writeString(" is prime\n"); }
+
 }
