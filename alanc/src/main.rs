@@ -179,7 +179,9 @@ fn main() {
     }
 
     //* Clean up
-    std::fs::remove_dir_all(obj_filename).expect("failed to delete object file");
+    if std::fs::remove_file(obj_filename).is_err() {
+        eprintln!("{}", "Failed to remove object file".yellow());
+    }
 
     //* Done
     eprintln!("{}", "Compilation was successful".green());
