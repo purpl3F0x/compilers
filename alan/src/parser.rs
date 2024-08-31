@@ -157,16 +157,9 @@ where
         .map_with(|kind, e| ConditionAST { kind, span: e.span() })
         .labelled("bool const");
 
-        let atom = bool_literal
+        let atom: Boxed<'_, '_, I, ConditionAST<'_>, extra::Full<Rich<'_, Token<'_>>, (), ()>> = bool_literal
             // Atoms can also just be normal expressions, but surrounded with parentheses
             .or(cond.clone().delimited_by(just(Token::ParenthesisOpen), just(Token::ParenthesisClose)))
-            // Attempt to recover anything that looks like a parenthesized expression but contains errors
-            .recover_with(via_parser(nested_delimiters(
-                Token::ParenthesisOpen,
-                Token::ParenthesisClose,
-                [(Token::BraceOpen, Token::BraceClose), (Token::BracketOpen, Token::BracketClose)],
-                |_| (ConditionAST { kind: ConditionKind::Error, span: Span::new(0, 0) }),
-            )))
             .boxed();
 
         let prefix = select! {
