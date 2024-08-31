@@ -1,6 +1,6 @@
 
 # Alan Compiler 
-[![build](https://github.com/purpl3F0x/compilers/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/purpl3F0x/compilers/actions/workflows/rust.yml) 
+[![build](https://github.com/avramidis-stavros-compilers-org/compilers-mirror/actions/workflows/rust.yml/badge.svg)](https://github.com/avramidis-stavros-compilers-org/compilers-mirror/actions/workflows/rust.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 
@@ -52,7 +52,7 @@ Also (for compiling the stdlib):
 Clone the project
 
 ```bash
-git clone https://github.com/purpl3F0x/compilers.git
+git clone https://github.com/avramidis-stavros-compilers-org/compilers-mirror.git
 ```
 
 Go to the project directory
