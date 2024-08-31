@@ -18,13 +18,17 @@ The project contains 3 subdirectories (sub-crates).
 ___
 
 ## Build Instructions 🛠️
-(Not as detailed as IKEA's furnishes)
+(Not as detailed as IKEA's)
 
 Pre-build linux binaries are available, in the actions tab.
 
 ### Requirements
 
 A pre-configured [Dockerfile](https://gist.github.com/purpl3F0x/786ceaffcd16508ae90bfa60921521b4) and an image in [docker-hub](https://hub.docker.com/r/asder/alan-image) that is (somewhat) tested can be used to easily build and test the project.
+
+#### Rust - Cargo
+The project is tested on `rustc 1.82.0-nightly`.
+At the time of writing a nightly version is required.
 
 #### LLVM - Clang
 The project is requires and pre-configured to use LLVM 18.
