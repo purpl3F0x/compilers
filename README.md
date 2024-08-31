@@ -6,6 +6,10 @@
 
 Compiler of the Alan programming language, developed for the 8th semester's Compilers course at NTUA.
 
+
+> ### Μερικές έξτρα σημειώσεις, που ελπίζω να σας γλυτώσουν χρόνο [εδώ](./docs/alan-instructions.pdf)
+
+
 ## Author ✍️
 
 [Stavros Avramidis](https://www.github.com/purpl3F0x)
