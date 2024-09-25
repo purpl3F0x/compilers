@@ -1,5 +1,5 @@
-CC ?= clang
-CLANG ?= clang
+CC ?= clang-18
+CLANG ?= clang-18
 CFLAGS += -Wall -Werror -O3 -ffast-math -std=gnu17 -I.
 LIB_NAME = libalan.a
 TARGET_TRIPLE ?= $(shell llvm-config --host-target)
