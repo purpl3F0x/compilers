@@ -53,5 +53,5 @@ fn main() {
     }
 
     //make bitcode file;
-    let _cmd = cmd::new("llvm-as").arg("-o").arg(bit_file_path).arg(libalan_ll_path).output().expect("Couldn't generate libalan.bc");
+    let _cmd = cmd::new("llvm-as-18").arg("-o").arg(bit_file_path).arg(libalan_ll_path).output().expect("Couldn't generate libalan.bc");
 }

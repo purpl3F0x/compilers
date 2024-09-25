@@ -26,6 +26,22 @@ fn handle_io_error(err: ioError, what: Option<&str>) -> ! {
     exit(err.raw_os_error().unwrap_or(1));
 }
 
+fn find_clang() -> Result<String, ()> {
+    let candidates = ["clang", "clang-18"];
+
+    for candidate in &candidates {
+        if let Ok(output) = std::process::Command::new("which").arg(candidate).output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                return Ok(path);
+            }
+        }
+    }
+
+    Err(())
+}
+
+
 fn main() {
     let args = Args::parse();
 
@@ -164,7 +180,15 @@ fn main() {
     //* Link files with clang
     let libalan_path = std::env::current_exe().unwrap().parent().unwrap().join("libalan.a");
 
-    let compile_cmd = std::process::Command::new("clang")
+
+    let clang = find_clang();
+    if clang.is_err() {
+        eprintln!("failed to compile, make sure clang is installed");
+        exit(1);
+    }
+
+
+    let compile_cmd = std::process::Command::new(clang.unwrap())
         .arg("-o")
         .arg(out_file_name.as_str())
         .arg(obj_filename.as_str())
