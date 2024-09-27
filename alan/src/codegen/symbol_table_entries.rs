@@ -55,6 +55,7 @@ impl<'ctx> FunctionEntry<'ctx> {
         }
     }
 
+    #[allow(unused)]
     pub fn total_num_params(&self) -> usize {
         self.param_tys.len() + self.captures.len()
     }
