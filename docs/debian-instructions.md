@@ -11,7 +11,7 @@ sudo apt install build-essential wget curl gnupg lsb-release software-properties
 ### Install rustup, rust, cargo
 This will install the 1.82-nightly rust build and set it as a default toolchain.
 ```sh
-curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-2024-07-29
+curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly
 ```
 Reload the environment
 ```sh
