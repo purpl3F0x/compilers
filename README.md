@@ -39,14 +39,14 @@ At the time of writing a nightly version is required.
 The project is requires and pre-configured to use LLVM 18.
 
 If llvm is not in the default path `LLVM_SYS_180_PREFIX` should be set. <br>
-If you want to use any other version of llvm, [Cargo.toml](./alan/Cargo.toml) of alan crate should be configured accordingly.
+If you want to use any other version of llvm, [Cargo.toml](./alan/Cargo.toml) the [build.rs](./stdlib/build.rs) and [Makefile](./stdlib/Makefile) should be edited accordingly.
 
 In addition, llvm-sys will <u>**try**</u> to link llvm statically, (platforms such Arch will be built with dynamic llvm libraries)
 
-In sort, in order to fully build and run the compiler. The following should be available (without version prefixes or as symlinks).
+In sort, in order to fully build and run the compiler. The following should be available:
 - llvm-config
-- llvm-as
-- clang
+- llvm-as or llvm-as-18
+- clang or clang-18
 
 Also (for compiling the stdlib):
 - make
