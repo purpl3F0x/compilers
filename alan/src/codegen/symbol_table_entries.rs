@@ -12,7 +12,7 @@ pub struct LValueEntry<'ctx> {
 }
 
 impl<'ctx> LValueEntry<'ctx> {
-    pub fn new(ptr: PointerValue<'ctx>, ty: IRType, span: Span) -> LValueEntry {
+    pub fn new(ptr: PointerValue<'ctx>, ty: IRType, span: Span) -> LValueEntry<'ctx> {
         LValueEntry { ptr, ty, span }
     }
 }
