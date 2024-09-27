@@ -4,6 +4,32 @@ use std::io::Write;
 use std::path::Path;
 use std::process::Command as cmd;
 
+fn find_llvm_as() -> Result<String, ()> {
+    let candidates = ["llvm-as-18", "llvm-as"];
+
+    for candidate in &candidates {
+        if let Ok(output) = std::process::Command::new("which").arg(candidate).output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+                // Check the version of the found llvm-as
+                if let Ok(version_output) = std::process::Command::new(&path).arg("--version").output() {
+                    if version_output.status.success() {
+                        let version_str = String::from_utf8_lossy(&version_output.stdout);
+
+                        // Ensure it is version 18
+                        if version_str.contains("version 18") {
+                            return Ok(path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Err(())
+}
+
 fn process_file(file_path: &Path, regex: &Regex, substitution: &str) -> String {
     let contents = fs::read_to_string(file_path).expect("Failed to read the file");
 
@@ -53,5 +79,6 @@ fn main() {
     }
 
     //make bitcode file;
-    let _cmd = cmd::new("llvm-as-18").arg("-o").arg(bit_file_path).arg(libalan_ll_path).output().expect("Couldn't generate libalan.bc");
+    let _cmd =
+        cmd::new(find_llvm_as().unwrap()).arg("-o").arg(bit_file_path).arg(libalan_ll_path).output().expect("Couldn't generate libalan.bc");
 }
