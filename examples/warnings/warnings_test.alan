@@ -1,0 +1,24 @@
+
+
+main(): proc
+    x: int;
+
+    foo(x: int, y: int): int
+        j: int;
+    {
+        if (x > 0) {
+            if (x > 10)    return 1;
+            return 0;
+        }
+        else return 0;
+
+        x = 2;
+        return 0;
+    }
+
+{
+--    x = foo(x, x);
+    -- x = 32;
+
+    return;
+}

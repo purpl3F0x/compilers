@@ -87,6 +87,10 @@ pub struct Args {
     #[arg(value_enum, short = 'O')]
     pub optimize: bool,
 
+    /// Make all warnings into errors.
+    #[arg(long = "Werror")]
+    pub werror: bool,
+
     /// Dump AST to stdout
     #[arg(long = "dump-ast")]
     pub dump_ast: bool,

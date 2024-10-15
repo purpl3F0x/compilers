@@ -1,4 +1,4 @@
-use alan::codegen::{IRError, SemanticError};
+use alan::codegen::{IRError, SemanticError, SemanticWarning};
 use alan::lexer::*;
 
 use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Source};
@@ -57,7 +57,7 @@ pub fn report_compiler_error(filename: &str, source: &str, error: &IRError) {
 }
 
 pub fn report_semantic_error(filename: &str, source: &str, error: &SemanticError) {
-    let mut builder;
+    let mut builder: ariadne::ReportBuilder<'_, (&&str, std::ops::Range<usize>)>;
 
     match error {
         SemanticError::TopHasArguments { signature_span } => {
@@ -389,6 +389,48 @@ pub fn report_semantic_error(filename: &str, source: &str, error: &SemanticError
                         .with_message(format!("argument has type of array, but it's not passed as reference `{}`", ty).fg(Color::Red))
                         .with_color(Color::Yellow)
                         .with_order(1),
+                );
+        }
+    }
+
+    builder
+        .with_config(Config::default().with_cross_gap(true).with_compact(false).with_underlines(true).with_tab_width(4))
+        .finish()
+        .eprint((&filename, Source::from(source)))
+        .unwrap();
+}
+
+pub fn report_compiler_warning(filename: &str, source: &str, warning: &SemanticWarning, as_error: bool) {
+    let builder: ariadne::ReportBuilder<'_, (&&str, std::ops::Range<usize>)>;
+
+    let report_kind = if as_error { ReportKind::Error } else { ReportKind::Warning };
+    let msg_color = if as_error { Color::Red } else { Color::Yellow };
+
+    match warning {
+        SemanticWarning::UnusedFunction { span, name } => {
+            builder =
+                Report::build(report_kind, &filename, span.start).with_message(format!("Unused function").fg(Color::Blue)).with_label(
+                    Label::new((&filename, span.into_range()))
+                        .with_message(format!("Function `{}` is declared but never used", name).fg(msg_color))
+                        .with_color(msg_color),
+                );
+        }
+
+        SemanticWarning::UnusedVariable { span, name } => {
+            builder =
+                Report::build(report_kind, &filename, span.start).with_message(format!("Unused variable").fg(Color::Blue)).with_label(
+                    Label::new((&filename, span.into_range()))
+                        .with_message(format!("Variable `{}` is declared but never used", name).fg(msg_color))
+                        .with_color(msg_color),
+                );
+        }
+
+        SemanticWarning::UnreachableCode { span } => {
+            builder =
+                Report::build(report_kind, &filename, span.start).with_message(format!("Unreachable code").fg(Color::Blue)).with_label(
+                    Label::new((&filename, span.into_range()))
+                        .with_message(format!("Code is unreachable").fg(msg_color))
+                        .with_color(msg_color),
                 );
         }
     }

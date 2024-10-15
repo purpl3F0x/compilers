@@ -41,7 +41,6 @@ fn find_clang() -> Result<String, ()> {
     Err(())
 }
 
-
 fn main() {
     let args = Args::parse();
 
@@ -141,6 +140,21 @@ fn main() {
         exit(1);
     }
 
+    //* Any warnings ?
+    let warnings = compiler.iter_warnings();
+    if warnings.peekable().peek().is_some() {
+        compiler.iter_warnings().for_each(|w| {
+            // println!("{}", w);
+            report_compiler_warning(&src_file_name, src_buffer.as_str(), &w, args.werror);
+            // report_compiler_warning(&src_file_name, src_buffer.as_str(), &w);
+        });
+
+        if args.werror {
+            eprintln!("\n{}", "Exiting due to warnings".red());
+            exit(1);
+        }
+    }
+
     //* Optimize ?
     if args.optimize {
         compiler.optimize();
@@ -180,13 +194,11 @@ fn main() {
     //* Link files with clang
     let libalan_path = std::env::current_exe().unwrap().parent().unwrap().join("libalan.a");
 
-
     let clang = find_clang();
     if clang.is_err() {
         eprintln!("failed to compile, make sure clang is installed");
         exit(1);
     }
-
 
     let compile_cmd = std::process::Command::new(clang.unwrap())
         .arg("-o")
