@@ -1,5 +1,6 @@
 use super::{IRType, Span};
 
+/// Errors that are generated during semantic analysis
 #[derive(Debug, PartialEq)]
 pub enum SemanticError {
     TopIsNotAProc {
@@ -111,6 +112,21 @@ pub enum SemanticError {
 }
 
 impl std::fmt::Display for SemanticError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        // Will just use this as a boilerplate, since we will not be using fmt for SemanticErrors
+        write!(f, "{:?}", self)
+    }
+}
+
+/// Warnings that are generated during semantic analysis
+#[derive(Debug, PartialEq)]
+pub enum SemanticWarning {
+    UnusedVariable { span: Span, name: String },
+    UnusedFunction { span: Span, name: String },
+    UnreachableCode { span: Span },
+}
+
+impl std::fmt::Display for SemanticWarning {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         // Will just use this as a boilerplate, since we will not be using fmt for SemanticErrors
         write!(f, "{:?}", self)
