@@ -104,10 +104,20 @@ char readChar()
 
 void readString(const int n, char s[])
 {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
+    unsigned cnt = 0;
+    char     c;
 
-    (void)fgets(s, n, stdin);
+    if (s == NULL || n == 0)
+        return;
 
-#pragma GCC diagnostic pop
+    while ((c = getchar()) && c != EOF && cnt < n - 1) {
+        if (c == '\n') {
+            s[cnt] = 0;
+            return;
+        }
+
+        s[cnt++] = c;
+    }
+
+    s[cnt] = 0; // making sure it's 0-terminated
 }
