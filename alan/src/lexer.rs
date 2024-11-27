@@ -160,7 +160,7 @@ pub enum Token<'input> {
     })]
     CharConst(char),
 
-    #[regex(r#""([^\\\"]|[\\]["\\\/ntr0\'\"]|\\x[[:xdigit:]]{2})*""#, string_literal)]
+    #[regex(r#""([^\\\"\n]|[\\]["\\\/ntr0\'\"]|\\x[[:xdigit:]]{2})*""#, string_literal)]
     #[regex(
         r#""([^\\\"]|[\\]["\\\/ntr0\'\"]|\\x[[:xdigit:]]{2})*"#,
         |_| Err(LexingError::UnterminatedStringLiteral)
@@ -280,7 +280,7 @@ impl LexingError {
         match self {
             Self::InvalidEscapeCode => Some("Valid escape codes are: \\n, \\t, \\r, \\0, \\\\, \\\', \\\"".to_string()),
 
-            Self::UnterminatedStringLiteral => Some("String literals must be terminated with a double quote".to_string()),
+            Self::UnterminatedStringLiteral => Some("String literals must occupy a single line & be terminated with a double quote".to_string()),
 
             Self::NonAsciiCharacter(_) => Some("Valid ascii characters are smaller than 128 (0x80)".to_string()),
 
