@@ -9,11 +9,14 @@ pub struct LValueEntry<'ctx> {
     pub ty: IRType,
     /// The span of the declaration of the lvalue
     pub span: Span,
+
+    /// Whether the lvalue is used in the program
+    pub is_used: bool,
 }
 
 impl<'ctx> LValueEntry<'ctx> {
     pub fn new(ptr: PointerValue<'ctx>, ty: IRType, span: Span) -> LValueEntry<'ctx> {
-        LValueEntry { ptr, ty, span }
+        LValueEntry { ptr, ty, span, is_used: false }
     }
 }
 
@@ -29,6 +32,8 @@ pub struct FunctionEntry<'ctx> {
     /// (stdlib/extern) functions have a span of 0,  0) - to avoid wasting memory for Option<Span>
     pub span: Span,
     pub ret_ty_span: Span,
+
+    pub is_used: bool,
 }
 
 impl<'ctx> FunctionEntry<'ctx> {
@@ -40,7 +45,7 @@ impl<'ctx> FunctionEntry<'ctx> {
         span: Span,
         ret_ty_span: Span,
     ) -> FunctionEntry<'ctx> {
-        FunctionEntry { function, return_ty, param_tys, captures: Box::new(captures), is_stdlib: false, span, ret_ty_span }
+        FunctionEntry { function, return_ty, param_tys, captures: Box::new(captures), is_stdlib: false, span, ret_ty_span, is_used: false }
     }
 
     pub fn new_extern(function: FunctionValue<'ctx>, return_ty: IRType, param_tys: Vec<IRType>) -> FunctionEntry<'ctx> {
@@ -52,6 +57,7 @@ impl<'ctx> FunctionEntry<'ctx> {
             is_stdlib: true,
             span: Span::new(0, 0),
             ret_ty_span: Span::new(0, 0),
+            is_used: false,
         }
     }
 

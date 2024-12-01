@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::path::Path;
 
 use super::scope::{Scope, Scopes};
-use super::semantic::SemanticError;
+use super::semantic::{SemanticError, SemanticWarning};
 use super::symbol_table_entries::{FunctionEntry, LValueEntry};
 use super::IntType as AlanIntType;
 use super::{ast::*, Span};
@@ -39,6 +39,9 @@ pub struct Compiler<'ctx> {
     function_symbol_table: Scopes<&'ctx str, FunctionEntry<'ctx>>,
     /// The return type of the current function being compiled, update it before statement cgen, so it doesn't get overwritten by a nested function def
     current_function_return_type: IRType,
+
+    // Warnings list
+    warnings: Vec<SemanticWarning>,
 
     // Types
     int_type: IntType<'ctx>,
@@ -142,6 +145,8 @@ impl<'ctx> Compiler<'ctx> {
             function_symbol_table: Scopes::new(),
             current_function_return_type: IRType::Void,
 
+            warnings: Vec::new(),
+
             int_type: int_type,
             char_type: char_type,
             bool_type: bool_type,
@@ -209,6 +214,16 @@ impl<'ctx> Compiler<'ctx> {
                 }
             }
         }
+        //* Check for unused variables
+        let variables = self.lvalue_symbol_table.pop().unwrap();
+        let functions = self.function_symbol_table.pop().unwrap();
+        variables.iter().filter(|(_, entry)| !entry.is_used).for_each(|(name, entry)| {
+            self.warnings.push(SemanticWarning::UnusedVariable { name: name.to_string(), span: entry.span });
+        });
+
+        functions.iter().filter(|(_, entry)| !entry.is_used).for_each(|(name, entry)| {
+            self.warnings.push(SemanticWarning::UnusedFunction { name: name.to_string(), span: entry.span });
+        });
 
         //* Build the actual main function and call top-level function
         let main_bb = self.context.append_basic_block(main_func, "entry");
@@ -290,6 +305,10 @@ impl<'ctx> Compiler<'ctx> {
 
     pub fn target_is_windows(&self) -> bool {
         self.target.get_feature_string().to_str().unwrap().contains("windows")
+    }
+
+    pub fn iter_warnings(&self) -> impl Iterator<Item = &SemanticWarning> {
+        self.warnings.iter()
     }
 
     //* ------------------------ *//
@@ -532,7 +551,7 @@ impl<'ctx> Compiler<'ctx> {
                 ))
             }
             ExprKind::LValue(ref lval) => {
-                let LValueEntry { ptr, ty, span: _ } = self.cgen_lvalue_ptr(lval)?;
+                let LValueEntry { ptr, ty, span: _, is_used: _ } = self.cgen_lvalue_ptr(lval)?;
                 Ok((ptr.as_basic_value_enum(), ty))
             }
 
@@ -540,7 +559,7 @@ impl<'ctx> Compiler<'ctx> {
                 let (fn_value, fn_type) = self.cgen_fn_call(fn_call)?;
 
                 if fn_type.is_void() {
-                    let function_entry = self.function_symbol_table.get(fn_call.name).unwrap();
+                    let function_entry = self.function_symbol_table.get_as_ref(fn_call.name).unwrap();
                     let fn_span = function_entry.span;
                     Err(SemanticError::AssignResultOfProc { span: fn_call.span, decl_span: fn_span }.into())
                 } else {
@@ -578,9 +597,10 @@ impl<'ctx> Compiler<'ctx> {
 
                 let expr_res = self.cgen_int_value_or_load(expr_res, &expr_ty, expr.span)?;
 
-                let LValueEntry { mut ptr, mut ty, span } = self.lvalue_symbol_table.get_from_last(*id).ok_or_else(|| {
+                let entry = self.lvalue_symbol_table.get_from_last(*id).ok_or_else(|| {
                     return SemanticError::UndeclaredIdentifier { name: id.to_string(), span: lval.span };
                 })?;
+                let LValueEntry { mut ptr, mut ty, span, is_used: _ } = entry.clone();
 
                 // make sure we are subscripting an array
                 if !ty.is_array() {
@@ -588,12 +608,12 @@ impl<'ctx> Compiler<'ctx> {
                     if ty.is_reference() {
                         ty = ty.get_inner_type().unwrap().clone();
                         if !ty.is_array() {
-                            return Err(SemanticError::SubscriptingNonArray { span: lval.span, ty, decl_span: span }.into());
+                            return Err(SemanticError::SubscriptingNonArray { span: lval.span, ty, decl_span: span.clone() }.into());
                         }
                         // we must load the reference
                         ptr = self.builder.build_load(self.ptr_type, ptr, format!("deref.{}", id).as_str())?.into_pointer_value();
                     } else {
-                        return Err(SemanticError::SubscriptingNonArray { span: lval.span, ty, decl_span: span }.into());
+                        return Err(SemanticError::SubscriptingNonArray { span: lval.span, ty, decl_span: span.clone() }.into());
                     }
                 }
                 let inner_type: &IRType = ty.get_inner_type().unwrap();
@@ -613,13 +633,13 @@ impl<'ctx> Compiler<'ctx> {
                     _ => unreachable!(),
                 };
 
-                Ok(LValueEntry::new(element_pointer?, inner_type.clone(), span))
+                Ok(LValueEntry::new(element_pointer?, inner_type.clone(), span.clone()))
             }
         }
     }
 
     /// This function will get a IntValue or load an IntValue from a PointerValue (aka reference)
-    fn cgen_int_value_or_load(&mut self, value: BasicValueEnum<'ctx>, ty: &IRType, span: Span) -> IRResult<IntValue<'ctx>> {
+    fn cgen_int_value_or_load(&self, value: BasicValueEnum<'ctx>, ty: &IRType, span: Span) -> IRResult<IntValue<'ctx>> {
         if value.is_int_value() {
             Ok(value.into_int_value())
         } else if value.is_pointer_value() {
@@ -733,9 +753,9 @@ impl<'ctx> Compiler<'ctx> {
             }
         }
 
-        //* Pass cacptures to the function
+        //* Pass captures to the function
         //* Practically we could save the ptr in the symbol table, when building the function
-        //* But this is safer, and prefered for now
+        //* But this is safer, and preferred for now
         for (lval, _lval_ty) in func_captures.iter() {
             // ! this needs some further checking for arrays and nested references
 
@@ -817,10 +837,17 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     fn cgen_statements(&mut self, stmts: &'ctx Vec<StatementAST>) -> IRResult<()> {
-        for stmt in stmts {
-            self.cgen_statement(stmt)?;
-            if matches!(stmt.kind, StatementKind::Return(_)) {
-                // ? add a warning if not last statment
+        let mut stms_iter = stmts.iter().peekable();
+
+        while let Some(stmt) = stms_iter.next() {
+            let stmt_returns = self.cgen_statement(stmt)?;
+
+            if stmt_returns {
+                if stms_iter.peek().is_some() {
+                    let last = stms_iter.last().unwrap();
+                    let span = Span::new(stmt.span.end, last.span.end);
+                    self.warnings.push(SemanticWarning::UnreachableCode { span: span });
+                }
                 break;
             }
         }
@@ -828,7 +855,10 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     /// Generate IR for a [StatementAST]
-    fn cgen_statement(&mut self, stmt: &'ctx StatementAST) -> IRResult<()> {
+    /// Returns true if the statement "returns" (i.e. has a return statement, or is an if-else with both branches returning)
+    fn cgen_statement(&mut self, stmt: &'ctx StatementAST) -> IRResult<bool> {
+        let mut returns = false;
+
         match &stmt.kind {
             StatementKind::Expr(e) => {
                 self.cgen_expression(e)?;
@@ -839,7 +869,7 @@ impl<'ctx> Compiler<'ctx> {
                     return Err(SemanticError::AssignToString { span: stmt.span }.into());
                 }
                 // todo: this needs further checking
-                let LValueEntry { ptr: mut lval_ptr, ty: mut lval_type, span } = self.cgen_lvalue_ptr(lvalue)?;
+                let LValueEntry { ptr: mut lval_ptr, ty: mut lval_type, span, is_used: _ } = self.cgen_lvalue_ptr(lvalue)?;
                 let (expr_value, expr_type): (BasicValueEnum<'ctx>, IRType) = self.cgen_expression(expr)?;
 
                 if !lval_type.is_primitive() & !lval_type.is_primitive_reference() {
@@ -894,7 +924,7 @@ impl<'ctx> Compiler<'ctx> {
                 if !fn_value.is_void() {
                     // According to the spec, this is a hard-error, not a warning
                     // ? maybe introduce a maybe_unused attribute ?
-                    let fn_entry = self.function_symbol_table.get(fn_call.name).unwrap();
+                    let fn_entry = self.function_symbol_table.get_as_ref(fn_call.name).unwrap();
 
                     return Err(SemanticError::UnusedReturnValue {
                         span: stmt.span,
@@ -907,6 +937,7 @@ impl<'ctx> Compiler<'ctx> {
             }
 
             StatementKind::Return(expr) => {
+                returns = true;
                 if let Some(expr) = expr {
                     let (expr_res, expr_ty) = self.cgen_expression(expr)?;
                     // todo: add func declaration to the error (see also bellow)
@@ -973,7 +1004,11 @@ impl<'ctx> Compiler<'ctx> {
                 if end_block.get_first_use() == None {
                     // if both branches return, delete end block
                     unsafe {
-                        return end_block.delete().map_err(|_| IRError::String("[LLVM] Failed to delete block".to_string()));
+                        let e = end_block.delete().map_err(|_| IRError::String("[LLVM] Failed to delete block".to_string()));
+                        returns = true;
+                        if e.is_err() {
+                            return Err(e.unwrap_err());
+                        }
                     };
                 } else {
                     self.builder.position_at_end(end_block);
@@ -1011,7 +1046,7 @@ impl<'ctx> Compiler<'ctx> {
             StatementKind::Error => return Err(IRError::UnknownError),
         }
 
-        Ok(())
+        Ok(returns)
     }
 
     /// Generate IR for a [LocalDefinitionAST]
@@ -1240,8 +1275,16 @@ impl<'ctx> Compiler<'ctx> {
         self.cgen_statements(&func.body)?;
 
         //* Prepare to leave function
-        self.lvalue_symbol_table.pop();
-        self.function_symbol_table.pop();
+        let variables = self.lvalue_symbol_table.pop().unwrap();
+        let functions = self.function_symbol_table.pop().unwrap();
+
+        //* Check for unused variables and functions
+        variables.iter().filter(|(_, entry)| !entry.is_used).for_each(|(name, entry)| {
+            self.warnings.push(SemanticWarning::UnusedVariable { name: name.to_string(), span: entry.span });
+        });
+        functions.iter().filter(|(_, entry)| !entry.is_used).for_each(|(name, entry)| {
+            self.warnings.push(SemanticWarning::UnusedFunction { name: name.to_string(), span: entry.span });
+        });
 
         //* Check if any module of the CFG returns, and build return for void functions
         for bb in function.get_basic_blocks() {
