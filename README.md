@@ -7,7 +7,7 @@
 Compiler of the Alan programming language, developed for the 8th semester's Compilers course at NTUA.
 
 
-#### Μερικές έξτρα σημειώσεις, που ελπίζω να σας γλυτώσουν χρόνο [εδώ](./docs/alan-instructions.pdf)
+![alt text](./assets/boot_message.png)
 
 #### Instructions for building in Debian [here](./docs/debian-instructions.md)
 
