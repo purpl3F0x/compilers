@@ -97,20 +97,9 @@ Run it with `--version`, if you want to chase some dragons.
 ## Known Bugs ☠️
 - [ ] Parsing lower bound negative integer (f.ex -2147483648 for 32b ints)
 
-- [ ] Pour diagnostic messages (LLVM hard erroring), when putting expressions after conditional statements that all their branches return. For example
-    ```pl
-    main() : proc
-        x: int;
-    {
-        if (x > 0) return;
-        else return;
-
-        return;
-    }
 
 ### ToDo
 - [X] Cross compilation (partially working)
-- [ ] Warnings
 
 ##
 `
